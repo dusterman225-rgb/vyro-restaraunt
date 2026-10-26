@@ -8,6 +8,20 @@
 <link rel="icon" href="images/logo.svg" type="image/svg+xml">
 <link rel="stylesheet" href="css/styles.css">
 <link rel="stylesheet" href="css/clean.css">
+<style>/* ---- table board (point of sale and host) ---- */
+.tbl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(62px,1fr));gap:10px;margin:12px 0}
+.tbl{aspect-ratio:1/1;border-radius:12px;background:rgba(255,255,255,.03);color:inherit;font:inherit;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:3px;border:1px solid transparent;min-width:0}
+.tbl b{font-size:1.2rem;line-height:1}
+.tbl small{font-size:.6rem;opacity:.9;letter-spacing:.02em;line-height:1.1;text-align:center}
+.tbl.open{border-color:#7fe3b0;box-shadow:0 0 0 2px #7fe3b0,0 0 10px 2px #7fe3b099}
+.tbl.reserved{border-color:#4B9CD3;box-shadow:0 0 0 2px #4B9CD3,0 0 10px 2px #4B9CD399}
+.tbl.occupied{border-color:#ff6b6b;box-shadow:0 0 0 2px #ff6b6b,0 0 10px 2px #ff6b6b99}
+.tbl.dirty{border-color:#ffb25c;box-shadow:0 0 0 2px #ffb25c,0 0 10px 2px #ffb25c99}
+.tbl.ready{animation:tblpulse 1.2s infinite}
+@keyframes tblpulse{50%{filter:brightness(1.6)}}
+.legend{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;font-size:.72rem;opacity:.9;margin:6px 0}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:middle}
+</style>
 </head>
 <body>
 <div class="wrap">
@@ -22,6 +36,9 @@
     <div><small>To clean</small><b id="sDirty">-</b></div>
   </div>
   <div class="legend"><span><i style="background:#7fe3b0"></i>Open</span><span><i style="background:#4B9CD3"></i>Reserved</span><span><i style="background:#ff6b6b"></i>Occupied</span><span><i style="background:#ffb25c"></i>Needs cleaning</span></div>
+  <div class="tabs" id="flt" style="flex-wrap:wrap">
+    <button type="button" class="on" data-f="all">All</button><button type="button" data-f="Open">Open</button><button type="button" data-f="Reserved">Reserved</button><button type="button" data-f="Seated">Occupied</button><button type="button" data-f="Needs cleaning">Needs cleaning</button>
+  </div>
   <div class="tbl-grid" id="grid"></div>
   <div class="note" id="empty"></div>
   <details class="sec" id="bulkSec" style="display:none">
@@ -70,6 +87,8 @@
     if (!(R.isStaff(ctx) || role === 'host' || role === 'server')) { deny('Tables are for hosts, servers and managers.'); return; }
     var layout = role !== 'host' && role !== 'server' && R.can(ctx, 'reservations'), col = ctx.bizRef.collection('tables'), rows = [], editing = null;
     if (layout) { $('addSec').style.display = 'block'; $('bulkSec').style.display = 'block'; }
+    var flt = 'all';
+    Array.prototype.forEach.call(document.querySelectorAll('#flt button'), function (b) { b.addEventListener('click', function () { flt = b.getAttribute('data-f'); Array.prototype.forEach.call(document.querySelectorAll('#flt button'), function (x) { x.classList.toggle('on', x === b); }); draw(); }); });
     var CLS = { 'Open': 'open', 'Reserved': 'reserved', 'Seated': 'occupied', 'Needs cleaning': 'dirty' };
     function natural(a, b) { return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' }); }
     function mins(t) { return t.seatedAt ? Math.max(0, Math.round((Date.now() - t.seatedAt) / 60000)) : 0; }
@@ -83,8 +102,9 @@
       var g = $('grid'); g.textContent = ''; var o = 0, se = 0, d2 = 0;
       rows.forEach(function (t) {
         var st = t.status || 'Open'; if (st === 'Open') o++; if (st === 'Seated') se++; if (st === 'Needs cleaning') d2++;
+        if (flt !== 'all' && st !== flt) return;
         var c = vyro.el('button', 'tbl ' + (CLS[st] || 'open')); c.type = 'button'; c.setAttribute('aria-label', 'Table ' + t.name + ', ' + (st === 'Seated' ? 'occupied' : st.toLowerCase()));
-        c.appendChild(vyro.el('b', '', t.name)); c.appendChild(vyro.el('small', '', st === 'Seated' ? mins(t) + ' min' : ((t.seats || '?') + ' seats')));
+        c.appendChild(vyro.el('b', '', t.name)); c.appendChild(vyro.el('small', '', st === 'Seated' ? mins(t) + ' min' : (st === 'Reserved' && t.party ? t.party : ((t.seats || '?') + ' seats'))));
         c.addEventListener('click', function () { sheet(t); }); g.appendChild(c);
       });
       $('sOpen').textContent = o; $('sSeat').textContent = se; $('sDirty').textContent = d2; $('empty').textContent = rows.length ? '' : 'No tables yet.' + (layout ? ' Use "Set up all my tables" below.' : ' A manager adds them.');
