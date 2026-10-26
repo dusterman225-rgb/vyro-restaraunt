@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#05070A">
+<title>Home - Vyro Business</title>
+<link rel="icon" href="images/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/styles.css">
+<link rel="stylesheet" href="css/clean.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">
+    <a href="index.html"><img class="mark-small" src="images/logo.svg" alt="Back to home"></a>
+    <div class="tag">Restaurant</div>
+  </div>
+
+  <div class="strip" id="strip">
+    <div><small>Open orders</small><b id="sOpen">-</b></div>
+    <div><small>Orders today</small><b id="sCount">-</b></div>
+    <div><small id="s3l">Sales today</small><b id="sSales">-</b></div>
+  </div>
+  <div class="note" id="who"></div>
+  <div class="note err" id="qBanner" style="display:none"></div>
+  <div class="qa" id="tiles"></div>
+  <div class="card">
+    <button class="btn ghost" id="out" type="button">Sign out</button>
+  </div>
+  <div class="note err" id="err"></div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/util.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/theme.js"></script>
+<script src="js/roles.js"></script>
+<script src="js/notify.js"></script>
+<script src="js/offline.js"></script>
+<script>
+  var $ = function (id) { return document.getElementById(id); };
+  function onlyRestaurant(ctx) { if (ctx.biz.product && ctx.biz.product !== 'restaurant') { location.replace('https://vyrocontractor.dusterman225.workers.dev/app.html'); return false; } vtheme.load(ctx); return true; }
+  function deny(msg) { Array.prototype.forEach.call(document.querySelectorAll('.wrap > *'), function (n) { if (!n.classList.contains('brand') && !n.classList.contains('back') && n.id !== 'err') n.style.display = 'none'; }); $('err').textContent = msg || 'You do not have access to this page.'; }
+
+  $('out').addEventListener('click', async function () { await vyro.signOut(); location.href = 'login.html'; });
+  vyro.start(async function (ctx) {
+    if (!onlyRestaurant(ctx)) return;
+    var R = vroles, role = ctx.role, staff = R.isStaff(ctx);
+    document.querySelector('.tag').textContent = ctx.biz.name || 'Restaurant';
+    $('who').textContent = ((ctx.me && ctx.me.name) || ctx.user.email) + ' \u00b7 ' + ((ctx.me && ctx.me.title) || R.label(role));
+    if (role === 'kiosk') { location.replace('kiosk.html'); return; }
+    try { if (window.vqueue && vqueue.count(ctx)) await vqueue.flush(ctx); } catch (e) {}
+
+    // which tools each role sees
+    var T = [];
+    function tile(name, href, ok, primary) { if (ok) T.push([name, href, primary]); }
+    var isCook = role === 'cook', isServer = role === 'server', isHost = role === 'host';
+    tile('Point of sale', 'pos.html', staff || isServer || role === 'employee', true);
+    tile('Kitchen', 'kitchen.html', staff || isCook || isServer || role === 'employee', isCook);
+    tile('Orders', 'orders.html', staff || isServer || isCook || isHost || role === 'employee');
+    tile('Tables', 'tables.html', staff || isHost || isServer, isHost);
+    tile('Reservations', 'reservations.html', staff || isHost || isServer, isHost);
+    tile('Ingredient supply', 'supply.html', staff || isCook, isCook);
+    tile('Recipes and ingredients', 'ingredients.html', staff || isCook || isServer);
+    tile('Time clock', 'timeclock.html', true);
+    tile('Kiosk', 'kiosk.html', staff);
+    tile('Menu and recipes', 'menu.html', R.can(ctx, 'menu'));
+    tile('Brand colours', 'theme.html', R.can(ctx, 'colors'));
+    tile('Team', 'team.html', R.can(ctx, 'team'));
+    tile('Finances', 'finances.html', role === 'owner');
+    tile('Business profile', 'profile.html', role === 'owner');
+    var box = $('tiles'); box.style.flexWrap = 'wrap';
+    T.forEach(function (t) { var a = vyro.el('a', t[2] ? 'btn' : 'btn ghost', t[0]); a.href = t[1]; box.appendChild(a); });
+
+    // server alerts: your order is ready
+    if (isServer || role === 'employee') {
+      vnotify.start(ctx, function (n) { if (n) { $('who').textContent = n + ' of your orders ' + (n === 1 ? 'is' : 'are') + ' READY to pick up'; } });
+    }
+    // numbers
+    if (!staff) { $('s3l').textContent = 'Your orders'; }
+    try {
+      var s = await ctx.bizRef.collection('orders').where('dateKey', '==', vutil.todayStr()).get();
+      var open = 0, n = 0, sales = 0, mine = 0;
+      s.forEach(function (d) { var o = d.data(); if (o.status === 'Voided') return; n++; if (o.status === 'Open') open++; if (o.status === 'Paid') sales += o.totalCents || 0; if (o.byUid === ctx.user.uid) mine++; });
+      $('sOpen').textContent = open; $('sCount').textContent = n; $('sSales').textContent = staff ? vutil.fmt(sales) : mine;
+    } catch (e) { $('err').textContent = vyro.friendly(e); }
+  });
+</script>
+</body>
+</html>

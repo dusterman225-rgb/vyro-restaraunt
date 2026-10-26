@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#05070A">
+<title>Tables - Vyro Business</title>
+<link rel="icon" href="images/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/styles.css">
+<link rel="stylesheet" href="css/clean.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">
+    <a href="index.html"><img class="mark-small" src="images/logo.svg" alt="Back to home"></a>
+    <div class="tag">Tables and seating</div>
+  </div>
+
+  <div class="strip">
+    <div><small>Open</small><b id="sOpen">-</b></div>
+    <div><small>Seated</small><b id="sSeat">-</b></div>
+    <div><small>To clean</small><b id="sDirty">-</b></div>
+  </div>
+  <div class="pos-grid" id="grid"></div>
+  <div class="note" id="empty"></div>
+  <details class="sec" id="addSec" style="display:none">
+    <summary>Add or change a table</summary>
+    <div class="in">
+      <label class="field"><span>Table name</span><input id="name" maxlength="20" placeholder="e.g. T4 or Patio 2"></label>
+      <label class="field"><span>Seats</span><input id="seats" type="number" inputmode="numeric" min="1" max="50"></label>
+      <label class="field"><span>Section (optional)</span><input id="section" maxlength="30" placeholder="e.g. Patio"></label>
+      <button class="btn" id="save" type="button">Save table</button>
+      <button class="btn ghost" id="cancel" type="button" style="display:none">Cancel edit</button>
+      <div class="note" id="msg"></div>
+    </div>
+  </details>
+  <a class="btn ghost" href="reservations.html">Reservations</a>
+  <a class="back" href="index.html">Back to home</a>
+  <div class="note err" id="err"></div>
+</div>
+<div class="modal-bg" id="bg"><div class="modal" id="box"></div></div>
+
+<script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/util.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/theme.js"></script>
+<script src="js/roles.js"></script>
+<script>
+  var $ = function (id) { return document.getElementById(id); };
+  function onlyRestaurant(ctx) { if (ctx.biz.product && ctx.biz.product !== 'restaurant') { location.replace('https://vyrocontractor.dusterman225.workers.dev/app.html'); return false; } vtheme.load(ctx); return true; }
+  function deny(msg) { Array.prototype.forEach.call(document.querySelectorAll('.wrap > *'), function (n) { if (!n.classList.contains('brand') && !n.classList.contains('back') && n.id !== 'err') n.style.display = 'none'; }); $('err').textContent = msg || 'You do not have access to this page.'; }
+
+  vyro.start(async function (ctx) {
+    if (!onlyRestaurant(ctx)) return;
+    var R = vroles, role = ctx.role;
+    if (!(R.isStaff(ctx) || role === 'host' || role === 'server')) { deny('Tables are for hosts, servers and managers.'); return; }
+    var layout = role === 'host' || R.can(ctx, 'reservations'), col = ctx.bizRef.collection('tables'), rows = [], editing = null;
+    if (layout) $('addSec').style.display = 'block';
+    var COLOR = { 'Open': '#2e9e5b', 'Reserved': '#d4a537', 'Seated': '#0e7fa6', 'Needs cleaning': '#d64545' };
+    function mins(t) { return t.seatedAt ? Math.max(0, Math.round((Date.now() - t.seatedAt) / 60000)) : 0; }
+    col.onSnapshot(function (s) {
+      rows = s.docs.map(function (d) { var x = d.data(); x.id = d.id; return x; });
+      rows.sort(function (a, b) { return ((a.section || '') + (a.name || '')).toLowerCase() < ((b.section || '') + (b.name || '')).toLowerCase() ? -1 : 1; });
+      draw();
+    }, function (e) { $('err').textContent = vyro.friendly(e); });
+    setInterval(function () { if (rows.length) draw(); }, 60000);
+    function draw() {
+      var g = $('grid'); g.textContent = ''; var o = 0, se = 0, d2 = 0;
+      rows.forEach(function (t) {
+        var st = t.status || 'Open'; if (st === 'Open') o++; if (st === 'Seated') se++; if (st === 'Needs cleaning') d2++;
+        var c = vyro.el('div', 'pos-item'); c.setAttribute('role', 'button'); c.tabIndex = 0; c.style.borderColor = COLOR[st]; c.style.boxShadow = '0 0 0 1px ' + COLOR[st] + '66';
+        c.appendChild(vyro.el('b', '', t.name)); c.appendChild(vyro.el('span', '', (t.seats || '?') + ' seats' + (t.section ? ' \u00b7 ' + t.section : '')));
+        var sp = vyro.el('span', '', st + (st === 'Seated' ? ' \u00b7 ' + mins(t) + ' min' : '') + (t.party && st !== 'Open' ? ' \u00b7 ' + t.party : '')); sp.style.color = COLOR[st]; sp.style.fontWeight = '700'; c.appendChild(sp);
+        c.addEventListener('click', function () { sheet(t); }); g.appendChild(c);
+      });
+      $('sOpen').textContent = o; $('sSeat').textContent = se; $('sDirty').textContent = d2; $('empty').textContent = rows.length ? '' : 'No tables yet.' + (layout ? ' Add your tables below.' : ' A host or manager adds them.');
+    }
+    async function setStatus(t, st, party) {
+      var d = { status: st, updatedAt: vyro.stamp() };
+      if (role !== 'server') { d.party = party || ''; d.seatedAt = st === 'Seated' ? Date.now() : 0; }
+      try { await col.doc(t.id).update(d); $('bg').classList.remove('open'); } catch (e) { $('err').textContent = vyro.friendly(e); }
+    }
+    function sheet(t) {
+      var b = $('box'); b.textContent = ''; b.appendChild(vyro.el('h2', '', t.name + ' \u00b7 ' + (t.status || 'Open')));
+      function btn(txt, fn, ghost) { var x = vyro.el('button', ghost ? 'btn ghost' : 'btn', txt); x.type = 'button'; x.addEventListener('click', fn); b.appendChild(x); }
+      if (role !== 'server') {
+        var nm = document.createElement('input'); nm.placeholder = 'Party name and size, e.g. Lee, 4'; nm.maxLength = 40; nm.value = t.party || ''; nm.style.width = '100%'; b.appendChild(nm);
+        btn('Seat a walk-in here', function () { setStatus(t, 'Seated', nm.value.trim()); });
+        btn('Hold for a reservation', function () { setStatus(t, 'Reserved', nm.value.trim()); }, true);
+      } else btn('Mark seated', function () { setStatus(t, 'Seated'); });
+      btn('Needs cleaning', function () { setStatus(t, 'Needs cleaning', ''); }, true);
+      btn('Open and ready', function () { setStatus(t, 'Open', ''); }, true);
+      if (layout) { btn('Edit this table', function () { $('bg').classList.remove('open'); edit(t); }, true); btn('Delete this table', async function () { if (!confirm('Delete ' + t.name + '?')) return; try { await col.doc(t.id).delete(); $('bg').classList.remove('open'); } catch (e) { $('err').textContent = vyro.friendly(e); } }, true); }
+      btn('Close', function () { $('bg').classList.remove('open'); }, true); $('bg').classList.add('open');
+    }
+    $('bg').addEventListener('click', function (e) { if (e.target === this) this.classList.remove('open'); });
+    function edit(t) { editing = t ? t.id : null; t = t || {}; $('name').value = t.name || ''; $('seats').value = t.seats || ''; $('section').value = t.section || ''; $('cancel').style.display = editing ? 'block' : 'none'; $('addSec').open = true; $('addSec').scrollIntoView(); }
+    $('cancel').addEventListener('click', function () { edit(null); });
+    $('save').addEventListener('click', async function () {
+      var n = $('name').value.trim(), s = parseInt($('seats').value, 10);
+      if (!n || !(s >= 1 && s <= 50)) { $('msg').textContent = 'Enter a name and the number of seats (1 to 50).'; $('msg').className = 'note err'; return; }
+      var d = { name: n, seats: s, section: $('section').value.trim(), updatedAt: vyro.stamp() };
+      try { if (editing) await col.doc(editing).set(d, { merge: true }); else { d.status = 'Open'; d.party = ''; d.seatedAt = 0; d.createdAt = vyro.stamp(); await col.add(d); } $('msg').textContent = 'Saved.'; $('msg').className = 'note ok'; edit(null); }
+      catch (e) { $('msg').textContent = vyro.friendly(e); $('msg').className = 'note err'; }
+    });
+  });
+</script>
+</body>
+</html>

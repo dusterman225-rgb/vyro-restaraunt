@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#05070A">
+<title>Point of sale - Vyro Business</title>
+<link rel="icon" href="images/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/styles.css">
+<link rel="stylesheet" href="css/clean.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">
+    <a href="index.html"><img class="mark-small" src="images/logo.svg" alt="Back to home"></a>
+    <div class="tag">Point of sale</div>
+  </div>
+
+  <div class="note err" id="qBanner" style="display:none;cursor:pointer;border:1px solid currentColor;border-radius:12px;padding:10px"></div>
+  <div class="card" style="margin-top:0;padding:12px">
+    <div class="row" style="gap:8px;border:0"><input id="kno" placeholder="Kiosk number, e.g. K0421" maxlength="8" style="flex:1;text-transform:uppercase"><button class="btn ghost" id="kfind" type="button" style="margin:0;width:auto">Find</button></div>
+    <div class="note" id="kmsg" style="margin-top:6px"></div>
+  </div>
+  <div class="tabs" id="cats"></div>
+  <div class="pos-grid" id="grid"></div>
+  <div class="note" id="noMenu"></div>
+
+  <div class="card" style="margin-top:8px">
+    <label class="field"><span>Table or name</span><input id="label" maxlength="40" placeholder="e.g. Table 4"></label>
+    <div id="cart"></div>
+    <div class="note" id="cartEmpty">Tap menu items to add them.</div>
+    <div class="total-row"><span>Subtotal</span><b id="tSub">$0.00</b></div>
+    <div class="total-row"><span id="taxLbl">Tax</span><b id="tTax">$0.00</b></div>
+    <div class="total-row big"><span>Total</span><b id="tTot">$0.00</b></div>
+    <button class="btn ghost" id="viewIng" type="button">View ingredients</button>
+    <button class="btn" id="send" type="button">Save order (pay later)</button>
+    <button class="btn" id="pay" type="button">Take payment</button>
+    <button class="btn ghost" id="clear" type="button">Clear</button>
+    <div class="note" id="msg"></div>
+  </div>
+
+  <div class="note">Pay with Vyro crypto at the counter is not part of the point of sale yet. For now record Cash, Card (taken on your own card reader) or Other. Saved orders go to the Kitchen screen.</div>
+  <a class="back" href="orders.html">Orders</a>
+  <div class="note err" id="err"></div>
+</div>
+
+<div class="modal-bg" id="ingBg"><div class="modal" id="ingBox"></div></div>
+<div class="modal-bg" id="payBg"><div class="modal">
+  <h2>Take payment</h2>
+  <div class="total-row"><span>Order total</span><b id="payTot"></b></div>
+  <div class="note" style="text-align:left;margin:6px 0 0">Tip</div>
+  <div class="tabs" id="tipTabs" style="margin:4px 0 6px"></div>
+  <label class="field" style="margin-top:0"><span>Or a tip amount ($)</span><input id="tipCustom" type="number" inputmode="decimal" step="0.01" min="0"></label>
+  <div class="total-row"><span>Tip</span><b id="payTip">$0.00</b></div>
+  <div class="total-row big"><span>Amount due</span><b id="payDue"></b></div>
+  <div id="payRows"></div>
+  <button class="btn ghost" id="addPay" type="button">Split: add another payment</button>
+  <div class="note" id="change"></div>
+  <button class="btn" id="payOk" type="button">Mark as paid</button>
+  <button class="btn ghost" id="payNo" type="button">Cancel</button>
+  <div class="note" id="payMsg"></div>
+</div></div>
+
+<script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/util.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/theme.js"></script>
+<script src="js/roles.js"></script>
+<script src="js/notify.js"></script>
+<script src="js/offline.js"></script>
+<script>
+  var $ = function (id) { return document.getElementById(id); };
+  function onlyRestaurant(ctx) { if (ctx.biz.product && ctx.biz.product !== 'restaurant') { location.replace('https://vyrocontractor.dusterman225.workers.dev/app.html'); return false; } vtheme.load(ctx); return true; }
+
+  vyro.start(async function (ctx) {
+    if (!onlyRestaurant(ctx)) return;
+    var menu = [], cart = {}, taxPct = 0, cat = '', orderId = null, orderNo = '';
+    var who = (ctx.me && ctx.me.name) || ctx.user.email;
+    var qs = new URLSearchParams(location.search);
+
+    try {
+      var ts = await ctx.bizRef.collection('settings').doc('pos').get(); if (ts.exists) taxPct = Number(ts.data().taxPct) || 0;
+      var ms = await ctx.bizRef.collection('menu').get();
+      menu = ms.docs.map(function (d) { var x = d.data(); x.id = d.id; return x; }).filter(function (m) { return m.active !== false; });
+      menu.sort(function (a, b) { return (a.name || '').toLowerCase() < (b.name || '').toLowerCase() ? -1 : 1; });
+    } catch (e) { $('err').textContent = vyro.friendly(e); }
+    $('taxLbl').textContent = 'Tax' + (taxPct ? ' (' + taxPct + '%)' : '');
+    var byId = {}; menu.forEach(function (m) { byId[m.id] = m; });
+
+    function showIng(list) { /* list: [{name, ingredients}] */
+      var box = $('ingBox'); box.textContent = '';
+      box.appendChild(vyro.el('h2', '', 'Ingredients'));
+      var all = {}, allList = [];
+      list.forEach(function (m) {
+        box.appendChild(vyro.el('b', '', m.name));
+        if (m.ingredients && m.ingredients.length) {
+          var ul = document.createElement('ul');
+          m.ingredients.forEach(function (i) { ul.appendChild(vyro.el('li', '', i)); var k = i.toLowerCase(); if (!all[k]) { all[k] = 1; allList.push(i); } });
+          box.appendChild(ul);
+        } else box.appendChild(vyro.el('div', 'note', 'No recipe saved for this item.'));
+      });
+      if (list.length > 1 && allList.length) {
+        box.appendChild(vyro.el('h2', '', 'All together'));
+        box.appendChild(vyro.el('div', '', allList.join(', ')));
+      }
+      box.appendChild(vyro.el('div', 'note', 'This is the list the restaurant saved. It is not an allergen guarantee. Always ask the kitchen about allergies.'));
+      var c = vyro.el('button', 'btn', 'Close'); c.type = 'button'; c.addEventListener('click', function () { $('ingBg').classList.remove('open'); });
+      box.appendChild(c); $('ingBg').classList.add('open');
+    }
+    $('ingBg').addEventListener('click', function (e) { if (e.target === this) this.classList.remove('open'); });
+
+    function drawMenu() {
+      var cats = []; menu.forEach(function (m) { var c = m.category || 'Menu'; if (cats.indexOf(c) < 0) cats.push(c); });
+      cats.sort();
+      if (!cat || cats.indexOf(cat) < 0) cat = cats[0] || '';
+      var tabs = $('cats'); tabs.textContent = '';
+      cats.forEach(function (c) { var b = vyro.el('button', c === cat ? 'tab on' : 'tab', c); b.type = 'button'; b.addEventListener('click', function () { cat = c; drawMenu(); }); tabs.appendChild(b); });
+      var g = $('grid'); g.textContent = '';
+      $('noMenu').textContent = menu.length ? '' : 'No menu items yet. The owner or a supervisor can add them under Menu and recipes.';
+      menu.filter(function (m) { return (m.category || 'Menu') === cat; }).forEach(function (m) {
+        var t = vyro.el('div', 'pos-item'); t.setAttribute('role', 'button'); t.tabIndex = 0;
+        t.appendChild(vyro.el('b', '', m.name)); t.appendChild(vyro.el('span', '', vutil.fmt(m.priceCents)));
+        t.addEventListener('click', function () { add(m.id, 1); });
+        if (m.ingredients && m.ingredients.length) {
+          var i = vyro.el('button', 'pos-info', 'i'); i.type = 'button'; i.setAttribute('aria-label', 'Ingredients for ' + m.name);
+          i.addEventListener('click', function (e) { e.stopPropagation(); showIng([m]); }); t.appendChild(i);
+        }
+        g.appendChild(t);
+      });
+    }
+    function add(id, n) { var c = cart[id] || { id: id, name: byId[id] ? byId[id].name : '', priceCents: byId[id] ? byId[id].priceCents : 0, qty: 0 }; c.qty += n; if (c.qty <= 0) delete cart[id]; else cart[id] = c; drawCart(); }
+    function totals() {
+      var sub = 0; Object.keys(cart).forEach(function (k) { sub += cart[k].priceCents * cart[k].qty; });
+      var tax = Math.round(sub * taxPct / 100); return { sub: sub, tax: tax, total: sub + tax };
+    }
+    function drawCart() {
+      var box = $('cart'); box.textContent = ''; var ids = Object.keys(cart);
+      $('cartEmpty').style.display = ids.length ? 'none' : 'block';
+      ids.forEach(function (k) {
+        var c = cart[k], row = vyro.el('div', 'item'), left = vyro.el('div', 'grow');
+        left.appendChild(vyro.el('b', '', c.name)); left.appendChild(vyro.el('small', '', vutil.fmt(c.priceCents) + ' each'));
+        row.appendChild(left);
+        var q = vyro.el('div', 'qty'), m = vyro.el('button', '', '\u2212'), p = vyro.el('button', '', '+');
+        m.type = p.type = 'button'; m.setAttribute('aria-label', 'Remove one'); p.setAttribute('aria-label', 'Add one');
+        m.addEventListener('click', function () { add(k, -1); }); p.addEventListener('click', function () { add(k, 1); });
+        q.appendChild(m); q.appendChild(vyro.el('b', '', String(c.qty))); q.appendChild(p); row.appendChild(q);
+        row.appendChild(vyro.el('b', '', vutil.fmt(c.priceCents * c.qty)));
+        box.appendChild(row);
+      });
+      var t = totals(); $('tSub').textContent = vutil.fmt(t.sub); $('tTax').textContent = vutil.fmt(t.tax); $('tTot').textContent = vutil.fmt(t.total);
+    }
+    $('viewIng').addEventListener('click', function () {
+      var ids = Object.keys(cart); if (!ids.length) { $('msg').textContent = 'Add an item first.'; $('msg').className = 'note err'; return; }
+      showIng(ids.map(function (k) { var m = byId[k]; return { name: cart[k].qty + ' x ' + cart[k].name, ingredients: m ? m.ingredients : [] }; }));
+    });
+    $('clear').addEventListener('click', function () { if (orderId) { location.href = 'pos.html'; return; } cart = {}; $('label').value = ''; drawCart(); });
+
+    var loadedSig = '', loadedKitchen = '';
+    function sigNow() { return Object.keys(cart).sort().map(function (k) { return k + ':' + cart[k].qty; }).join(','); }
+    function orderData(status, extra) {
+      var t = totals(), items = Object.keys(cart).map(function (k) { var c = cart[k]; return { menuId: c.id, name: c.name, qty: c.qty, priceCents: c.priceCents }; });
+      var d = { label: $('label').value.trim().slice(0, 40), items: items, subtotalCents: t.sub, taxPct: taxPct, taxCents: t.tax, totalCents: t.total, status: status, updatedAt: vyro.stamp() };
+      if (extra) for (var k in extra) d[k] = extra[k];
+      return d;
+    }
+    async function save(status, extra) {
+      if (!Object.keys(cart).length) { $('msg').textContent = 'Add at least one item.'; $('msg').className = 'note err'; return false; }
+      try {
+        var res;
+        if (orderId) {
+          var ud = orderData(status, extra); if (sigNow() !== loadedSig) { ud.kitchenStatus = 'New'; loadedSig = sigNow(); } if (status === 'Paid' && loadedKitchen === 'Hold') { ud.kitchenStatus = 'New'; loadedKitchen = ''; }
+          res = await vqueue.save(ctx, 'update', orderId, ud);
+        } else {
+          var d = orderData(status, extra);
+          orderNo = '#' + String(Date.now() % 10000).padStart(4, '0');
+          d.kitchenStatus = 'New'; d.number = orderNo; d.dateKey = vutil.todayStr(); d.byUid = ctx.user.uid; d.byName = who; d.createdAt = vyro.stamp(); d.clientAt = Date.now();
+          orderId = ctx.bizRef.collection('orders').doc().id;
+          res = await vqueue.save(ctx, 'set', orderId, d);
+        }
+        lastQueued = res === 'queued'; drawQueue();
+        return true;
+      } catch (e) { $('msg').textContent = vyro.friendly(e); $('msg').className = 'note err'; return false; }
+    }
+    var lastQueued = false;
+    function drawQueue() {
+      var n = vqueue.count(ctx), b = $('qBanner');
+      b.style.display = n ? 'block' : 'none';
+      b.textContent = n ? n + ' order' + (n === 1 ? '' : 's') + ' saved on this phone, waiting for the internet. Keep this phone and tap here to upload now.' : '';
+    }
+    async function flushNow() { try { await vqueue.flush(ctx); } catch (e) {} drawQueue(); }
+    $('qBanner').addEventListener('click', flushNow);
+    window.addEventListener('online', flushNow);
+    flushNow();
+    $('send').addEventListener('click', async function () {
+      this.disabled = true;
+      if (await save('Open')) { $('msg').textContent = lastQueued ? 'No internet. The order is SAVED ON THIS PHONE and will upload by itself when the connection returns. The kitchen will not see it until then.' : 'Order saved. Find it under Orders.'; $('msg').className = lastQueued ? 'note err' : 'note ok'; cart = {}; orderId = null; $('label').value = ''; drawCart(); }
+      this.disabled = false;
+    });
+    // ---------- take payment: tip, split, change ----------
+    var tipCents = 0, pays = [];
+    function payDue() { return totals().total + tipCents; }
+    function setTip(c) { tipCents = Math.max(0, c || 0); drawPay(); }
+    function drawTipTabs() {
+      var tb = $('tipTabs'); tb.textContent = '';
+      [['No tip', 0], ['15%', 15], ['18%', 18], ['20%', 20]].forEach(function (p) {
+        var c = Math.round(totals().total * p[1] / 100), b = vyro.el('button', tipCents === c ? 'tab on' : 'tab', p[0]); b.type = 'button';
+        b.addEventListener('click', function () { $('tipCustom').value = ''; setTip(c); }); tb.appendChild(b);
+      });
+    }
+    function calcPay() {
+      var due = payDue(), amts = [], sumPrev = 0;
+      pays.forEach(function (p, i) {
+        var raw = p.input ? p.input.value.trim() : '', v;
+        if (i === pays.length - 1 && raw === '') v = Math.max(0, due - sumPrev); else v = raw === '' ? 0 : (vutil.toCents(raw) || 0);
+        amts.push(v); sumPrev += v;
+      });
+      var paid = sumPrev, res = { due: due, paid: paid, ok: false, msg: '', change: 0, payments: [] };
+      if (paid < due) { res.msg = vutil.fmt(due - paid) + ' still to collect'; return res; }
+      var over = paid - due, cash = 0;
+      pays.forEach(function (p, i) { if (p.method === 'Cash') cash += amts[i]; });
+      if (over > cash) { res.msg = 'The amounts add up to more than is due.'; return res; }
+      if (over) { for (var i = pays.length - 1; i >= 0 && over > 0; i--) { if (pays[i].method === 'Cash') { var cut = Math.min(over, amts[i]); amts[i] -= cut; over -= cut; res.change += cut; } } }
+      pays.forEach(function (p, i) { if (amts[i] > 0) res.payments.push({ method: p.method, amountCents: amts[i] }); });
+      res.ok = res.payments.length > 0; if (res.change) res.msg = 'Change to give back: ' + vutil.fmt(res.change);
+      return res;
+    }
+    function drawPay() {
+      drawTipTabs(); $('payTot').textContent = vutil.fmt(totals().total); $('payTip').textContent = vutil.fmt(tipCents); $('payDue').textContent = vutil.fmt(payDue());
+      var box = $('payRows'); var keep = pays.map(function (p) { return p.input ? p.input.value : ''; }); box.textContent = '';
+      pays.forEach(function (p, i) {
+        var row = vyro.el('div', 'item'); row.style.gap = '6px';
+        var sel = document.createElement('select'); ['Cash', 'Card', 'Other'].forEach(function (m) { var o = document.createElement('option'); o.textContent = m; sel.appendChild(o); }); sel.value = p.method;
+        sel.addEventListener('change', function () { p.method = sel.value; refresh(); });
+        var inp = document.createElement('input'); inp.type = 'number'; inp.inputMode = 'decimal'; inp.step = '0.01'; inp.min = '0'; inp.value = keep[i] || '';
+        inp.placeholder = (i === pays.length - 1) ? 'rest of the amount' : 'amount'; inp.addEventListener('input', refresh); p.input = inp;
+        row.appendChild(sel); row.appendChild(inp);
+        if (pays.length > 1) { var x = vyro.el('button', 'btn ghost', 'Remove'); x.type = 'button'; x.style.marginTop = '0'; x.addEventListener('click', function () { pays.splice(i, 1); drawPay(); }); row.appendChild(x); }
+        box.appendChild(row);
+      });
+      refresh();
+    }
+    function refresh() { var r = calcPay(); $('change').textContent = r.msg; $('change').className = 'note' + (r.ok ? ' ok' : ''); $('payOk').disabled = !r.ok; }
+    $('tipCustom').addEventListener('input', function () { setTip(vutil.toCents(this.value) || 0); });
+    $('addPay').addEventListener('click', function () { if (pays.length < 6) { pays.push({ method: 'Card', input: null }); drawPay(); } });
+    $('pay').addEventListener('click', function () {
+      if (!Object.keys(cart).length) { $('msg').textContent = 'Add at least one item.'; $('msg').className = 'note err'; return; }
+      tipCents = 0; $('tipCustom').value = ''; pays = [{ method: 'Cash', input: null }]; $('payMsg').textContent = ''; drawPay(); $('payBg').classList.add('open');
+    });
+    $('payNo').addEventListener('click', function () { $('payBg').classList.remove('open'); });
+    $('payOk').addEventListener('click', async function () {
+      var r = calcPay(); if (!r.ok) return;
+      this.disabled = true;
+      var ok = await save('Paid', { method: r.payments.length > 1 ? 'Split' : r.payments[0].method, payments: r.payments, tipCents: tipCents, changeCents: r.change, paidAt: vyro.stamp(), paidBy: who });
+      this.disabled = false;
+      if (ok) {
+        var done = orderId; $('payBg').classList.remove('open');
+        if (lastQueued) { $('msg').textContent = 'No internet. Payment for order ' + (orderNo || '') + ' is SAVED ON THIS PHONE and will upload when the connection returns. The receipt works after it uploads.'; $('msg').className = 'note err'; }
+        else { $('msg').textContent = 'Paid. Order ' + (orderNo || '') + ' recorded. '; $('msg').className = 'note ok'; var a = vyro.el('a', 'link', 'Print receipt'); a.href = 'receipt.html?id=' + done; $('msg').appendChild(a); }
+        cart = {}; orderId = null; $('label').value = ''; drawCart();
+      } else { $('payMsg').textContent = $('msg').textContent; $('payMsg').className = 'note err'; }
+    });
+
+    // resume a saved open order: pos.html?order=ID
+    var oid = qs.get('order');
+    if (oid) {
+      try {
+        var os = await ctx.bizRef.collection('orders').doc(oid).get();
+        if (os.exists && os.data().status === 'Open') {
+          var o = os.data(); orderId = oid; orderNo = o.number || ''; loadedKitchen = o.kitchenStatus || ''; $('label').value = o.label || '';
+          (o.items || []).forEach(function (it) { if (!byId[it.menuId]) byId[it.menuId] = { id: it.menuId, name: it.name, priceCents: it.priceCents, ingredients: [] }; cart[it.menuId] = { id: it.menuId, name: it.name, priceCents: it.priceCents, qty: it.qty }; });
+          loadedSig = sigNow(); $('msg').textContent = 'Editing order ' + orderNo + '.'; $('msg').className = 'note';
+        }
+      } catch (e) { $('err').textContent = vyro.friendly(e); }
+    }
+    $('kfind').addEventListener('click', async function () {
+      var n = $('kno').value.trim().toUpperCase(); if (!n) return;
+      try {
+        var s = await ctx.bizRef.collection('orders').where('dateKey', '==', vutil.todayStr()).get(), hit = [];
+        s.forEach(function (d) { var o = d.data(); if (o.number === n && o.status === 'Open') hit.push(d.id); });
+        if (hit.length === 1) location.href = 'pos.html?order=' + hit[0];
+        else $('kmsg').textContent = hit.length ? 'More than one order has that number. Open it from the Orders page.' : 'No unpaid order with that number today.';
+      } catch (e) { $('kmsg').textContent = vyro.friendly(e); }
+    });
+    if (ctx.role === 'server' || ctx.role === 'employee') { try { vnotify.start(ctx); } catch (e) {} }
+    drawMenu(); drawCart();
+  });
+</script>
+</body>
+</html>
