@@ -27,6 +27,16 @@
       <div class="row" style="gap:8px;border:0"><input id="kno" placeholder="Kiosk number, e.g. K0421" maxlength="8" style="flex:1;text-transform:uppercase"><button class="btn ghost" id="kfind" type="button" style="margin:0;width:auto">Find</button></div>
       <div class="note" id="kmsg" style="margin-top:6px"></div>
     </div>
+    <details class="sec" id="setupSec" style="display:none">
+      <summary>Set up tables (management)</summary>
+      <div class="in">
+        <div class="note" style="text-align:left">Makes tables numbered 1 to however many you have. Tables you already have are left alone. Change seats or delete single tables under Tables and seating.</div>
+        <label class="field"><span>How many tables</span><input id="bulkN" type="number" inputmode="numeric" min="1" max="60" placeholder="30"></label>
+        <label class="field"><span>Seats at each</span><input id="bulkSeats" type="number" inputmode="numeric" min="1" max="50" value="4"></label>
+        <button class="btn" id="bulk" type="button">Create tables</button>
+        <div class="note" id="bulkMsg"></div>
+      </div>
+    </details>
     <a class="back" href="tables.html">Tables and seating</a>
   </div>
 
@@ -93,6 +103,19 @@
     if (!(staff || role === 'server' || role === 'employee')) { deny('The point of sale is for servers and managers.'); return; }
     var tcol = ctx.bizRef.collection('tables'), ocol = ctx.bizRef.collection('orders');
     var tables = [], orders = [], menu = [], byId = {}, taxPct = 0, cur = null, cat = '';
+    var canSetup = ctx.role !== 'host' && ctx.role !== 'server' && vroles.can(ctx, 'reservations');
+    if (canSetup) {
+      $('setupSec').style.display = 'block';
+      $('bulk').addEventListener('click', async function () {
+        var n = parseInt($('bulkN').value, 10), seats = parseInt($('bulkSeats').value, 10) || 4;
+        if (!(n >= 1 && n <= 60)) { $('bulkMsg').textContent = 'Enter a number of tables from 1 to 60.'; $('bulkMsg').className = 'note err'; return; }
+        var have = {}; tables.forEach(function (r) { have[String(r.name)] = 1; });
+        var batch = vyro.db.batch(), made = 0;
+        for (var i = 1; i <= n; i++) { if (have[String(i)]) continue; batch.set(tcol.doc(), { name: String(i), seats: seats, section: '', status: 'Open', party: '', seatedAt: 0, createdAt: vyro.stamp(), updatedAt: vyro.stamp() }); made++; }
+        if (!made) { $('bulkMsg').textContent = 'Those tables already exist.'; $('bulkMsg').className = 'note'; return; }
+        try { await batch.commit(); $('bulkMsg').textContent = 'Created ' + made + ' tables.'; $('bulkMsg').className = 'note ok'; } catch (e) { $('bulkMsg').textContent = vyro.friendly(e); $('bulkMsg').className = 'note err'; }
+      });
+    }
     var CLS = { 'Open': 'open', 'Reserved': 'reserved', 'Seated': 'occupied', 'Needs cleaning': 'dirty' };
     function natural(a, b) { return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' }); }
     function mins(t) { return t.seatedAt ? Math.max(0, Math.round((Date.now() - t.seatedAt) / 60000)) : 0; }
@@ -121,7 +144,7 @@
         b.appendChild(vyro.el('small', '', ready ? 'READY' : (st === 'Seated' ? mins(t) + ' min' : (t.seats ? t.seats + ' seats' : ''))));
         b.addEventListener('click', function () { tapTable(t); }); g.appendChild(b);
       });
-      $('tEmpty').textContent = tables.length ? '' : 'No tables yet. The host or a manager sets them up under Tables and seating.';
+      $('tEmpty').textContent = tables.length ? '' : (canSetup ? 'No tables yet. Open "Set up tables" below and enter how many you have.' : 'No tables yet. A manager sets them up.');
     }
     function setTable(t, st, extra) {
       var d = { status: st, updatedAt: vyro.stamp() };
