@@ -23,6 +23,10 @@
   </div>
   <div class="note" id="who"></div>
   <div class="note err" id="qBanner" style="display:none"></div>
+  <div id="boardBox" style="display:none">
+    <div class="legend"><span><i style="background:#7fe3b0"></i>Open</span><span><i style="background:#4B9CD3"></i>Reserved</span><span><i style="background:#ff6b6b"></i>Occupied</span><span><i style="background:#ffb25c"></i>Needs cleaning</span></div>
+    <div class="tbl-grid" id="tgrid"></div>
+  </div>
   <div class="qa" id="tiles"></div>
   <div class="card">
     <button class="btn ghost" id="out" type="button">Sign out</button>
@@ -74,6 +78,23 @@
     tile('Business profile', 'profile.html', role === 'owner');
     var box = $('tiles'); box.style.flexWrap = 'wrap';
     T.forEach(function (t) { var a = vyro.el('a', t[2] ? 'btn' : 'btn ghost', t[0]); a.href = t[1]; box.appendChild(a); });
+
+    // live table board on the home screen
+    if (staff || isServer || isHost) {
+      var CLS = { 'Open': 'open', 'Reserved': 'reserved', 'Seated': 'occupied', 'Needs cleaning': 'dirty' };
+      var go = isHost && !staff ? 'tables.html' : 'pos.html';
+      ctx.bizRef.collection('tables').onSnapshot(function (snap) {
+        var rows = []; snap.forEach(function (d) { var t = d.data(); t.id = d.id; rows.push(t); });
+        rows.sort(function (a, b) { return String(a.name).localeCompare(String(b.name), undefined, { numeric: true }); });
+        var g = $('tgrid'); g.textContent = ''; $('boardBox').style.display = rows.length ? 'block' : 'none';
+        rows.forEach(function (t) {
+          var st = t.status || 'Open', a = vyro.el('a', 'tbl ' + (CLS[st] || 'open')); a.href = go;
+          a.appendChild(vyro.el('b', '', t.name));
+          a.appendChild(vyro.el('small', '', st === 'Seated' ? Math.max(0, Math.round((Date.now() - (t.seatedAt || Date.now())) / 60000)) + ' min' : (t.seats || '?') + ' seats'));
+          g.appendChild(a);
+        });
+      }, function () {});
+    }
 
     // server alerts: your order is ready
     if (isServer || role === 'employee') {
