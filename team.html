@@ -115,7 +115,7 @@
           await col.doc(editing).update(upd); vyro.audit(ctx, 'member changed', em + ' ' + role); $('msg').textContent = 'Saved.'; $('msg').className = 'note ok';
         } else {
           var r = await vyro.addMember(ctx.bizId, em, n, role, extra); vyro.audit(ctx, 'member added', em + ' ' + role);
-          $('msg').textContent = r.emailSent ? 'Added. They were emailed a link to set their password.' : 'Added, but the email could not be sent. Ask them to use "Forgot password" on the sign-in page.'; $('msg').className = 'note ok';
+          $('msg').textContent = r.invited ? 'That email already has a Vyro login. They were sent an invitation: when they sign in, they will see it on their home screen and can accept it. They keep their other job.' : r.emailSent ? 'Added. They were emailed a link to set their password.' : 'Added, but the email could not be sent. Ask them to use "Forgot password" on the sign-in page.'; $('msg').className = 'note ok';
         }
         reset(); load();
       } catch (e) { $('msg').textContent = vyro.friendly(e); $('msg').className = 'note err'; }
