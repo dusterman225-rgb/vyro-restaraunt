@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#05070A">
+<title>Receipt - Vyro Business</title>
+<link rel="icon" href="images/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/styles.css">
+<link rel="stylesheet" href="css/clean.css">
+<style>@media print{html,body{background:#fff !important;color:#000 !important}.brand,.btn,.back,#err,.note.err,.helpbot,#vyro-help,[id^=helpbot]{display:none !important}.wrap{padding:0;max-width:none}.card{background:#fff !important;border:0 !important;box-shadow:none !important;color:#000 !important}.card *{color:#000 !important;border-color:#ccc !important}}</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">
+    <a href="index.html"><img class="mark-small" src="images/logo.svg" alt="Back to home"></a>
+    <div class="tag">Receipt</div>
+  </div>
+
+  
+  <div class="card" id="rc" style="margin-top:10px">
+    <div style="text-align:center"><b id="rName" style="font-size:1.2rem"></b><div class="note" id="rInfo" style="margin-top:4px"></div></div>
+    <div class="row"><span id="rNo"></span><span id="rDate"></span></div>
+    <div id="rItems"></div>
+    <div class="total-row"><span>Subtotal</span><b id="rSub"></b></div>
+    <div class="total-row"><span id="rTaxL">Tax</span><b id="rTax"></b></div>
+    <div class="total-row" id="rTipRow"><span>Tip</span><b id="rTip"></b></div>
+    <div class="total-row big"><span>Total</span><b id="rTot"></b></div>
+    <div id="rPays"></div>
+    <div class="note" id="rThanks">Thank you!</div>
+  </div>
+  <button class="btn" id="print" type="button">Print or save as PDF</button>
+  <a class="back" href="orders.html">Back to orders</a>
+  <div class="note err" id="err"></div>
+</div>
+<script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/util.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/theme.js"></script>
+<script src="js/roles.js"></script>
+<script>
+  var $ = function (id) { return document.getElementById(id); };
+  function onlyRestaurant(ctx) { if (ctx.biz.product && ctx.biz.product !== 'restaurant') { location.replace('https://vyrocontractor.dusterman225.workers.dev/app.html'); return false; } vtheme.load(ctx); return true; }
+
+
+  vyro.start(async function (ctx) {
+    if (!onlyRestaurant(ctx)) return;
+    var id = new URLSearchParams(location.search).get('id');
+    $('print').addEventListener('click', function () { window.print(); });
+    try {
+      var s = await ctx.bizRef.collection('orders').doc(id || 'x').get();
+      if (!s.exists) { $('err').textContent = 'Order not found.'; return; }
+      var o = s.data(), b = ctx.biz || {};
+      $('rName').textContent = b.name || '';
+      $('rInfo').textContent = [b.address || b.businessAddress, b.phone, b.email].filter(Boolean).join(' \u00b7 ');
+      $('rNo').textContent = 'Order ' + (o.number || '') + (o.label ? ' \u00b7 ' + o.label : '');
+      var when = o.paidAt && o.paidAt.toDate ? o.paidAt.toDate() : (o.createdAt && o.createdAt.toDate ? o.createdAt.toDate() : new Date());
+      $('rDate').textContent = when.toLocaleDateString() + ' ' + when.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      (o.items || []).forEach(function (i) { var r = vyro.el('div', 'row'); r.appendChild(vyro.el('span', '', i.qty + ' x ' + i.name + (i.modText ? ' (' + i.modText + ')' : ''))); r.appendChild(vyro.el('b', '', vutil.fmt(i.qty * i.priceCents))); $('rItems').appendChild(r); });
+      $('rSub').textContent = vutil.fmt(o.subtotalCents || 0); $('rTax').textContent = vutil.fmt(o.taxCents || 0);
+      $('rTaxL').textContent = 'Tax' + (o.taxPct ? ' (' + o.taxPct + '%)' : '');
+      var tip = o.tipCents || 0; $('rTipRow').style.display = tip ? 'flex' : 'none'; $('rTip').textContent = vutil.fmt(tip);
+      $('rTot').textContent = vutil.fmt((o.totalCents || 0) + tip);
+      if (o.status === 'Paid') {
+        (o.payments || [{ method: o.method || 'Paid', amountCents: o.totalCents }]).forEach(function (p) { var r = vyro.el('div', 'row'); r.appendChild(vyro.el('span', '', 'Paid by ' + p.method)); r.appendChild(vyro.el('b', '', vutil.fmt(p.amountCents))); $('rPays').appendChild(r); });
+        if (o.changeCents) { var c = vyro.el('div', 'row'); c.appendChild(vyro.el('span', '', 'Change given')); c.appendChild(vyro.el('b', '', vutil.fmt(o.changeCents))); $('rPays').appendChild(c); }
+      } else { $('rThanks').textContent = o.status === 'Voided' ? 'VOIDED ORDER' : 'NOT PAID YET'; }
+    } catch (e) { $('err').textContent = vyro.friendly(e); }
+  });
+</script>
+</body>
+</html>
