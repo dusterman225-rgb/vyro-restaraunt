@@ -118,3 +118,18 @@ summary:focus-visible,.btn:focus-visible,a:focus-visible{outline:2px solid #d4af
 .total-row.big{font-size:1.2rem;font-weight:700;border-top:1px solid rgba(255,255,255,.14);margin-top:6px;padding-top:10px}
 input[type=color]{height:52px;padding:4px;cursor:pointer}
 .item .btn{width:auto;flex:0 0 auto;padding:10px 14px;margin-top:0;letter-spacing:.06em;font-size:.8rem}
+
+/* ---- table board (point of sale and host) ---- */
+.tbl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(62px,1fr));gap:10px;margin:12px 0}
+.tbl{aspect-ratio:1/1;border-radius:12px;background:rgba(255,255,255,.03);color:inherit;font:inherit;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:3px;border:1px solid transparent;min-width:0}
+.tbl b{font-size:1.2rem;line-height:1}
+.tbl small{font-size:.6rem;opacity:.9;letter-spacing:.02em;line-height:1.1;text-align:center}
+.tbl.open{border-color:#7fe3b0;box-shadow:0 0 0 2px #7fe3b0,0 0 10px 2px #7fe3b099}
+.tbl.reserved{border-color:#4B9CD3;box-shadow:0 0 0 2px #4B9CD3,0 0 10px 2px #4B9CD399}
+.tbl.occupied{border-color:#ff6b6b;box-shadow:0 0 0 2px #ff6b6b,0 0 10px 2px #ff6b6b99}
+.tbl.dirty{border-color:#ffb25c;box-shadow:0 0 0 2px #ffb25c,0 0 10px 2px #ffb25c99}
+.tbl.ready{animation:tblpulse 1.2s infinite}
+@keyframes tblpulse{50%{filter:brightness(1.6)}}
+.legend{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;font-size:.72rem;opacity:.9;margin:6px 0}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:middle}
+.cat-tile{min-height:92px;display:flex;flex-direction:column;justify-content:center}
