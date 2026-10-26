@@ -63,8 +63,8 @@
       $('empty').textContent = mine.length ? '' : 'Nothing in ' + tab + '.';
       mine.forEach(function (o) {
         var card = vyro.el('div', 'card'); card.style.marginTop = '10px';
-        var top = vyro.el('div', 'row'); top.appendChild(vyro.el('b', '', (o.number || '') + (o.label ? ' \u00b7 ' + o.label : ''))); top.appendChild(vyro.el('span', mins(o) > 15 ? 'late' : '', mins(o) + ' min')); card.appendChild(top);
-        (o.items || []).forEach(function (i) { var r = vyro.el('div', 'item'); r.appendChild(vyro.el('b', '', i.qty + ' x')); r.appendChild(vyro.el('div', 'grow', i.name)); card.appendChild(r); });
+        var top = vyro.el('div', 'row'); var big = vyro.el('b', '', o.tableName ? 'TABLE ' + o.tableName : (o.number || '') + (o.label ? ' \u00b7 ' + o.label : '')); if (o.tableName) big.style.fontSize = '1.5rem'; top.appendChild(big); top.appendChild(vyro.el('span', mins(o) > 15 ? 'late' : '', mins(o) + ' min')); card.appendChild(top);
+        (o.items || []).forEach(function (i) { var r = vyro.el('div', 'item'); r.appendChild(vyro.el('b', '', i.qty + ' x')); r.appendChild(vyro.el('div', 'grow', i.name)); if ((o.lastRound || 1) > 1 && i.round === o.lastRound) r.appendChild(vyro.el('span', 'pill New', 'NEW')); else if ((o.lastRound || 1) > 1) r.appendChild(vyro.el('small', '', 'sent before')); card.appendChild(r); });
         if (o.status === 'Open') card.appendChild(vyro.el('small', '', 'Not paid yet'));
         var go = vyro.el('button', 'btn', LABEL[tab]); go.type = 'button';
         go.addEventListener('click', async function () { go.disabled = true; try { await col.doc(o.id).update({ kitchenStatus: STEPS[tab], updatedAt: vyro.stamp() }); } catch (e) { $('err').textContent = vyro.friendly(e); go.disabled = false; } });
@@ -89,4 +89,5 @@
   });
 </script>
 </body>
-</html>
+    </html>
+                                   
