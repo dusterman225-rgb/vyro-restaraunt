@@ -1,4 +1,17 @@
 (function () {
+  // If the Firebase settings file is missing or is the wrong file, say so on the page instead of showing a blank screen.
+  if (!window.VYRO_FIREBASE_CONFIG || typeof firebase === 'undefined') {
+    var setupMsg = 'Setup problem: js/firebase-config.js is missing or is the wrong file. Copy it from your contractor repo. It must start with window.VYRO_FIREBASE_CONFIG = .';
+    var showSetup = function () {
+      var e = document.getElementById('err') || document.getElementById('msg');
+      if (e) { e.textContent = setupMsg; e.className = 'note err'; }
+    };
+    var fail = function () { showSetup(); return Promise.reject({ code: 'vyro/setup' }); };
+    window.vyro = { start: showSetup, redirectIfSignedIn: function () {}, signIn: fail, signUp: fail, resetPassword: fail, signOut: function () { return Promise.resolve(); },
+      friendly: function () { return setupMsg; }, el: function (t, c, x) { var n = document.createElement(t); if (c) n.className = c; if (x !== undefined) n.textContent = x; return n; }, audit: function () {} };
+    showSetup();
+    return;
+  }
   firebase.initializeApp(window.VYRO_FIREBASE_CONFIG);
   var auth = firebase.auth();
   var db = firebase.firestore();
