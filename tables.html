@@ -68,7 +68,7 @@
     if (!onlyRestaurant(ctx)) return;
     var R = vroles, role = ctx.role;
     if (!(R.isStaff(ctx) || role === 'host' || role === 'server')) { deny('Tables are for hosts, servers and managers.'); return; }
-    var layout = role === 'host' || R.can(ctx, 'reservations'), col = ctx.bizRef.collection('tables'), rows = [], editing = null;
+    var layout = role !== 'host' && role !== 'server' && R.can(ctx, 'reservations'), col = ctx.bizRef.collection('tables'), rows = [], editing = null;
     if (layout) { $('addSec').style.display = 'block'; $('bulkSec').style.display = 'block'; }
     var CLS = { 'Open': 'open', 'Reserved': 'reserved', 'Seated': 'occupied', 'Needs cleaning': 'dirty' };
     function natural(a, b) { return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' }); }
@@ -87,7 +87,7 @@
         c.appendChild(vyro.el('b', '', t.name)); c.appendChild(vyro.el('small', '', st === 'Seated' ? mins(t) + ' min' : ((t.seats || '?') + ' seats')));
         c.addEventListener('click', function () { sheet(t); }); g.appendChild(c);
       });
-      $('sOpen').textContent = o; $('sSeat').textContent = se; $('sDirty').textContent = d2; $('empty').textContent = rows.length ? '' : 'No tables yet.' + (layout ? ' Use "Set up all my tables" below.' : ' A host or manager adds them.');
+      $('sOpen').textContent = o; $('sSeat').textContent = se; $('sDirty').textContent = d2; $('empty').textContent = rows.length ? '' : 'No tables yet.' + (layout ? ' Use "Set up all my tables" below.' : ' A manager adds them.');
     }
     async function setStatus(t, st, party) {
       var d = { status: st, updatedAt: vyro.stamp() };
