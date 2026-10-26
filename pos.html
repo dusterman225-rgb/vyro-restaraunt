@@ -16,34 +16,44 @@
     <div class="tag">Point of sale</div>
   </div>
 
-  <div class="note err" id="qBanner" style="display:none;cursor:pointer;border:1px solid currentColor;border-radius:12px;padding:10px"></div>
-  <div class="card" style="margin-top:0;padding:12px">
-    <div class="row" style="gap:8px;border:0"><input id="kno" placeholder="Kiosk number, e.g. K0421" maxlength="8" style="flex:1;text-transform:uppercase"><button class="btn ghost" id="kfind" type="button" style="margin:0;width:auto">Find</button></div>
-    <div class="note" id="kmsg" style="margin-top:6px"></div>
-  </div>
-  <div class="tabs" id="cats"></div>
-  <div class="pos-grid" id="grid"></div>
-  <div class="note" id="noMenu"></div>
-
-  <div class="card" style="margin-top:8px">
-    <label class="field"><span>Table or name</span><input id="label" maxlength="40" placeholder="e.g. Table 4"></label>
-    <div id="cart"></div>
-    <div class="note" id="cartEmpty">Tap menu items to add them.</div>
-    <div class="total-row"><span>Subtotal</span><b id="tSub">$0.00</b></div>
-    <div class="total-row"><span id="taxLbl">Tax</span><b id="tTax">$0.00</b></div>
-    <div class="total-row big"><span>Total</span><b id="tTot">$0.00</b></div>
-    <button class="btn ghost" id="viewIng" type="button">View ingredients</button>
-    <button class="btn" id="send" type="button">Save order (pay later)</button>
-    <button class="btn" id="pay" type="button">Take payment</button>
-    <button class="btn ghost" id="clear" type="button">Clear</button>
-    <div class="note" id="msg"></div>
+  <div id="boardView">
+    <div class="note" id="bMsg" style="min-height:1.2em"></div>
+    <div class="note err" id="qBanner" style="display:none;cursor:pointer;border:1px solid currentColor;border-radius:12px;padding:10px"></div>
+    <div class="legend"><span><i style="background:#7fe3b0"></i>Open</span><span><i style="background:#4B9CD3"></i>Reserved</span><span><i style="background:#ff6b6b"></i>Occupied</span><span><i style="background:#ffb25c"></i>Needs cleaning</span></div>
+    <div class="tbl-grid" id="tgrid"></div>
+    <div class="note" id="tEmpty"></div>
+    <button class="btn ghost" id="counter" type="button">Counter or takeout order</button>
+    <div class="card" style="padding:12px">
+      <div class="row" style="gap:8px;border:0"><input id="kno" placeholder="Kiosk number, e.g. K0421" maxlength="8" style="flex:1;text-transform:uppercase"><button class="btn ghost" id="kfind" type="button" style="margin:0;width:auto">Find</button></div>
+      <div class="note" id="kmsg" style="margin-top:6px"></div>
+    </div>
+    <a class="back" href="tables.html">Tables and seating</a>
   </div>
 
-  <div class="note">Pay with Vyro crypto at the counter is not part of the point of sale yet. For now record Cash, Card (taken on your own card reader) or Other. Saved orders go to the Kitchen screen.</div>
-  <a class="back" href="orders.html">Orders</a>
+  <div id="orderView" style="display:none">
+    <div class="row" style="gap:8px;border:0;align-items:center"><b id="ovTitle" style="font-size:1.2rem;text-align:left"></b><button class="btn ghost" id="ovBack" type="button" style="width:auto;margin:0">Tables</button></div>
+    <div class="note" id="ovParty" style="text-align:left"></div>
+    <div id="catBox"><div class="pos-grid" id="catGrid"></div><div class="note" id="noMenu"></div></div>
+    <div id="itemBox" style="display:none">
+      <button class="btn ghost" id="allCats" type="button">All categories</button>
+      <h3 id="catName" style="margin:12px 0 0"></h3>
+      <div class="pos-grid" id="grid"></div>
+    </div>
+    <div class="card" style="margin-top:8px">
+      <div id="cart"></div>
+      <div class="note" id="cartEmpty">Pick a category, then tap items.</div>
+      <div class="total-row"><span>Subtotal</span><b id="tSub">$0.00</b></div>
+      <div class="total-row"><span id="taxLbl">Tax</span><b id="tTax">$0.00</b></div>
+      <div class="total-row big"><span>Total</span><b id="tTot">$0.00</b></div>
+      <button class="btn ghost" id="viewIng" type="button">View ingredients</button>
+      <button class="btn" id="send" type="button">Send to kitchen</button>
+      <button class="btn" id="pay" type="button">Take payment</button>
+      <div class="note" id="msg"></div>
+    </div>
+  </div>
+  <div class="note">Pay with Vyro crypto is not part of the point of sale yet. Record Cash, Card (on your own reader) or Other.</div>
   <div class="note err" id="err"></div>
 </div>
-
 <div class="modal-bg" id="ingBg"><div class="modal" id="ingBox"></div></div>
 <div class="modal-bg" id="payBg"><div class="modal">
   <h2>Take payment</h2>
@@ -60,6 +70,7 @@
   <button class="btn ghost" id="payNo" type="button">Cancel</button>
   <div class="note" id="payMsg"></div>
 </div></div>
+<div class="modal-bg" id="sheetBg"><div class="modal" id="sheet"></div></div>
 
 <script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-auth-compat.js"></script>
@@ -74,131 +85,193 @@
 <script>
   var $ = function (id) { return document.getElementById(id); };
   function onlyRestaurant(ctx) { if (ctx.biz.product && ctx.biz.product !== 'restaurant') { location.replace('https://vyrocontractor.dusterman225.workers.dev/app.html'); return false; } vtheme.load(ctx); return true; }
+  function deny(msg) { Array.prototype.forEach.call(document.querySelectorAll('.wrap > *'), function (n) { if (!n.classList.contains('brand') && !n.classList.contains('back') && n.id !== 'err') n.style.display = 'none'; }); $('err').textContent = msg || 'You do not have access to this page.'; }
 
   vyro.start(async function (ctx) {
     if (!onlyRestaurant(ctx)) return;
-    var menu = [], cart = {}, taxPct = 0, cat = '', orderId = null, orderNo = '';
-    var who = (ctx.me && ctx.me.name) || ctx.user.email;
-    var qs = new URLSearchParams(location.search);
+    var R = vroles, role = ctx.role, staff = R.isStaff(ctx), who = (ctx.me && ctx.me.name) || ctx.user.email;
+    if (!(staff || role === 'server' || role === 'employee')) { deny('The point of sale is for servers and managers.'); return; }
+    var tcol = ctx.bizRef.collection('tables'), ocol = ctx.bizRef.collection('orders');
+    var tables = [], orders = [], menu = [], byId = {}, taxPct = 0, cur = null, cat = '';
+    var CLS = { 'Open': 'open', 'Reserved': 'reserved', 'Seated': 'occupied', 'Needs cleaning': 'dirty' };
+    function natural(a, b) { return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' }); }
+    function mins(t) { return t.seatedAt ? Math.max(0, Math.round((Date.now() - t.seatedAt) / 60000)) : 0; }
 
     try {
       var ts = await ctx.bizRef.collection('settings').doc('pos').get(); if (ts.exists) taxPct = Number(ts.data().taxPct) || 0;
       var ms = await ctx.bizRef.collection('menu').get();
       menu = ms.docs.map(function (d) { var x = d.data(); x.id = d.id; return x; }).filter(function (m) { return m.active !== false; });
-      menu.sort(function (a, b) { return (a.name || '').toLowerCase() < (b.name || '').toLowerCase() ? -1 : 1; });
+      menu.sort(function (a, b) { return natural(a.name || '', b.name || ''); });
     } catch (e) { $('err').textContent = vyro.friendly(e); }
+    menu.forEach(function (m) { byId[m.id] = m; });
     $('taxLbl').textContent = 'Tax' + (taxPct ? ' (' + taxPct + '%)' : '');
-    var byId = {}; menu.forEach(function (m) { byId[m.id] = m; });
 
-    function showIng(list) { /* list: [{name, ingredients}] */
-      var box = $('ingBox'); box.textContent = '';
-      box.appendChild(vyro.el('h2', '', 'Ingredients'));
-      var all = {}, allList = [];
-      list.forEach(function (m) {
-        box.appendChild(vyro.el('b', '', m.name));
-        if (m.ingredients && m.ingredients.length) {
-          var ul = document.createElement('ul');
-          m.ingredients.forEach(function (i) { ul.appendChild(vyro.el('li', '', i)); var k = i.toLowerCase(); if (!all[k]) { all[k] = 1; allList.push(i); } });
-          box.appendChild(ul);
-        } else box.appendChild(vyro.el('div', 'note', 'No recipe saved for this item.'));
+    // ---------- live tables and orders ----------
+    tcol.onSnapshot(function (s) { tables = s.docs.map(function (d) { var x = d.data(); x.id = d.id; return x; }); tables.sort(function (a, b) { return natural((a.section || '') + '|' + (a.name || ''), (b.section || '') + '|' + (b.name || '')); }); drawBoard(); }, function (e) { $('err').textContent = vyro.friendly(e); });
+    ocol.where('dateKey', '==', vutil.todayStr()).onSnapshot(function (s) { orders = s.docs.map(function (d) { var x = d.data(); x.id = d.id; return x; }); drawBoard(); }, function () {});
+    setInterval(function () { if ($('boardView').style.display !== 'none') drawBoard(); }, 60000);
+    function openOrderFor(t) { return orders.filter(function (o) { return o.tableId === t.id && o.status === 'Open'; })[0] || null; }
+    function drawBoard() {
+      var g = $('tgrid'); g.textContent = '';
+      tables.forEach(function (t) {
+        var st = t.status || 'Open', o = openOrderFor(t), ready = o && o.kitchenStatus === 'Ready';
+        var b = vyro.el('button', 'tbl ' + (CLS[st] || 'open') + (ready ? ' ready' : '')); b.type = 'button';
+        b.setAttribute('aria-label', 'Table ' + t.name + ', ' + (st === 'Seated' ? 'occupied' : st.toLowerCase()) + (ready ? ', order ready' : ''));
+        b.appendChild(vyro.el('b', '', t.name));
+        b.appendChild(vyro.el('small', '', ready ? 'READY' : (st === 'Seated' ? mins(t) + ' min' : (t.seats ? t.seats + ' seats' : ''))));
+        b.addEventListener('click', function () { tapTable(t); }); g.appendChild(b);
       });
-      if (list.length > 1 && allList.length) {
-        box.appendChild(vyro.el('h2', '', 'All together'));
-        box.appendChild(vyro.el('div', '', allList.join(', ')));
-      }
-      box.appendChild(vyro.el('div', 'note', 'This is the list the restaurant saved. It is not an allergen guarantee. Always ask the kitchen about allergies.'));
-      var c = vyro.el('button', 'btn', 'Close'); c.type = 'button'; c.addEventListener('click', function () { $('ingBg').classList.remove('open'); });
-      box.appendChild(c); $('ingBg').classList.add('open');
+      $('tEmpty').textContent = tables.length ? '' : 'No tables yet. The host or a manager sets them up under Tables and seating.';
     }
-    $('ingBg').addEventListener('click', function (e) { if (e.target === this) this.classList.remove('open'); });
+    function setTable(t, st, extra) {
+      var d = { status: st, updatedAt: vyro.stamp() };
+      if (role !== 'server' && extra) for (var k in extra) d[k] = extra[k];
+      return tcol.doc(t.id).update(d).catch(function (e) { $('err').textContent = vyro.friendly(e); });
+    }
+    function closeSheet() { $('sheetBg').classList.remove('open'); }
+    $('sheetBg').addEventListener('click', function (e) { if (e.target === this) closeSheet(); });
+    function tapTable(t) {
+      var st = t.status || 'Open';
+      if (st === 'Seated') { openTable(t); return; }
+      var b = $('sheet'); b.textContent = ''; b.appendChild(vyro.el('h2', '', 'Table ' + t.name + ' · ' + st));
+      function btn(txt, fn, ghost) { var x = vyro.el('button', ghost ? 'btn ghost' : 'btn', txt); x.type = 'button'; x.addEventListener('click', fn); b.appendChild(x); }
+      b.appendChild(vyro.el('div', 'note', 'This table is not occupied. Guests are seated by the host.'));
+      btn('Seat guests here and take their order', async function () { closeSheet(); await setTable(t, 'Seated', { seatedAt: Date.now(), party: '' }); t.status = 'Seated'; t.seatedAt = Date.now(); openTable(t); });
+      if (st === 'Needs cleaning') btn('Mark clean (open)', function () { closeSheet(); setTable(t, 'Open', { party: '', seatedAt: 0 }); }, true);
+      btn('Close', closeSheet, true); $('sheetBg').classList.add('open');
+    }
 
-    function drawMenu() {
-      var cats = []; menu.forEach(function (m) { var c = m.category || 'Menu'; if (cats.indexOf(c) < 0) cats.push(c); });
-      cats.sort();
-      if (!cat || cats.indexOf(cat) < 0) cat = cats[0] || '';
-      var tabs = $('cats'); tabs.textContent = '';
-      cats.forEach(function (c) { var b = vyro.el('button', c === cat ? 'tab on' : 'tab', c); b.type = 'button'; b.addEventListener('click', function () { cat = c; drawMenu(); }); tabs.appendChild(b); });
-      var g = $('grid'); g.textContent = '';
-      $('noMenu').textContent = menu.length ? '' : 'No menu items yet. The owner or a supervisor can add them under Menu and recipes.';
+    // ---------- order screen ----------
+    function newCur(table) { return { table: table, id: null, number: '', lines: [], lastRound: 0, kitchen: '', isNew: true }; }
+    function openTable(t) {
+      var o = openOrderFor(t); cur = newCur(t);
+      if (o) loadInto(o);
+      $('ovTitle').textContent = 'Table ' + t.name; $('ovParty').textContent = t.party ? 'Party: ' + t.party : '';
+      showOrder();
+    }
+    function loadInto(o) {
+      cur.id = o.id; cur.number = o.number || ''; cur.lastRound = o.lastRound || 0; cur.kitchen = o.kitchenStatus || ''; cur.isNew = false;
+      cur.lines = (o.items || []).map(function (i) { if (!byId[i.menuId]) byId[i.menuId] = { id: i.menuId, name: i.name, priceCents: i.priceCents, ingredients: [] }; return { menuId: i.menuId, name: i.name, priceCents: i.priceCents, qty: i.qty, sent: true, round: i.round || 1 }; });
+    }
+    function showOrder() { $('boardView').style.display = 'none'; $('orderView').style.display = 'block'; $('msg').textContent = ''; cat = ''; drawCats(); drawCart(); window.scrollTo(0, 0); }
+    function showBoard() { cur = null; $('orderView').style.display = 'none'; $('boardView').style.display = 'block'; drawBoard(); window.scrollTo(0, 0); }
+    $('ovBack').addEventListener('click', function () {
+      if (cur && cur.lines.some(function (l) { return !l.sent; }) && !confirm('Leave without sending? The new items on this order will be lost.')) return;
+      showBoard();
+    });
+    $('counter').addEventListener('click', function () { cur = newCur(null); $('ovTitle').textContent = 'Counter order'; $('ovParty').textContent = ''; showOrder(); });
+    $('kfind').addEventListener('click', function () {
+      var n = $('kno').value.trim().toUpperCase(); if (!n) return;
+      var hit = orders.filter(function (o) { return o.number === n && o.status === 'Open'; });
+      if (hit.length !== 1) { $('kmsg').textContent = hit.length ? 'More than one order has that number.' : 'No unpaid order with that number today.'; return; }
+      cur = newCur(null); loadInto(hit[0]); $('ovTitle').textContent = 'Kiosk order ' + n; $('ovParty').textContent = hit[0].label || ''; $('kno').value = ''; $('kmsg').textContent = ''; showOrder();
+    });
+
+    // categories and items
+    function drawCats() {
+      $('itemBox').style.display = cat ? 'block' : 'none'; $('catBox').style.display = cat ? 'none' : 'block';
+      if (cat) { drawItems(); return; }
+      var cats = {}; menu.forEach(function (m) { var c = m.category || 'Menu'; cats[c] = (cats[c] || 0) + 1; });
+      var g = $('catGrid'); g.textContent = '';
+      Object.keys(cats).sort(natural).forEach(function (c) {
+        var t = vyro.el('div', 'pos-item cat-tile'); t.setAttribute('role', 'button'); t.tabIndex = 0;
+        t.appendChild(vyro.el('b', '', c)); t.appendChild(vyro.el('span', '', cats[c] + (cats[c] === 1 ? ' item' : ' items')));
+        t.addEventListener('click', function () { cat = c; drawCats(); window.scrollTo(0, 0); }); g.appendChild(t);
+      });
+      $('noMenu').textContent = menu.length ? '' : 'No menu items yet. The owner or a manager adds them under Menu and recipes.';
+    }
+    $('allCats').addEventListener('click', function () { cat = ''; drawCats(); });
+    function drawItems() {
+      $('catName').textContent = cat; var g = $('grid'); g.textContent = '';
       menu.filter(function (m) { return (m.category || 'Menu') === cat; }).forEach(function (m) {
         var t = vyro.el('div', 'pos-item'); t.setAttribute('role', 'button'); t.tabIndex = 0;
         t.appendChild(vyro.el('b', '', m.name)); t.appendChild(vyro.el('span', '', vutil.fmt(m.priceCents)));
         t.addEventListener('click', function () { add(m.id, 1); });
-        if (m.ingredients && m.ingredients.length) {
-          var i = vyro.el('button', 'pos-info', 'i'); i.type = 'button'; i.setAttribute('aria-label', 'Ingredients for ' + m.name);
-          i.addEventListener('click', function (e) { e.stopPropagation(); showIng([m]); }); t.appendChild(i);
-        }
+        if (m.ingredients && m.ingredients.length) { var i = vyro.el('button', 'pos-info', 'i'); i.type = 'button'; i.setAttribute('aria-label', 'Ingredients for ' + m.name); i.addEventListener('click', function (e) { e.stopPropagation(); showIng([m]); }); t.appendChild(i); }
         g.appendChild(t);
       });
     }
-    function add(id, n) { var c = cart[id] || { id: id, name: byId[id] ? byId[id].name : '', priceCents: byId[id] ? byId[id].priceCents : 0, qty: 0 }; c.qty += n; if (c.qty <= 0) delete cart[id]; else cart[id] = c; drawCart(); }
-    function totals() {
-      var sub = 0; Object.keys(cart).forEach(function (k) { sub += cart[k].priceCents * cart[k].qty; });
-      var tax = Math.round(sub * taxPct / 100); return { sub: sub, tax: tax, total: sub + tax };
+
+    // cart: sent lines are locked, new lines can change
+    function add(id, n) {
+      var l = cur.lines.filter(function (x) { return x.menuId === id && !x.sent; })[0];
+      if (!l) { if (n < 0) return; var m = byId[id]; l = { menuId: id, name: m.name, priceCents: m.priceCents, qty: 0, sent: false }; cur.lines.push(l); }
+      l.qty += n; if (l.qty <= 0) cur.lines.splice(cur.lines.indexOf(l), 1); else if (l.qty > 30) l.qty = 30;
+      drawCart();
     }
+    function totals() { var sub = 0; cur.lines.forEach(function (l) { sub += l.priceCents * l.qty; }); var tax = Math.round(sub * taxPct / 100); return { sub: sub, tax: tax, total: sub + tax }; }
     function drawCart() {
-      var box = $('cart'); box.textContent = ''; var ids = Object.keys(cart);
-      $('cartEmpty').style.display = ids.length ? 'none' : 'block';
-      ids.forEach(function (k) {
-        var c = cart[k], row = vyro.el('div', 'item'), left = vyro.el('div', 'grow');
-        left.appendChild(vyro.el('b', '', c.name)); left.appendChild(vyro.el('small', '', vutil.fmt(c.priceCents) + ' each'));
+      var box = $('cart'); box.textContent = ''; $('cartEmpty').style.display = cur.lines.length ? 'none' : 'block';
+      cur.lines.forEach(function (l) {
+        var row = vyro.el('div', 'item'), left = vyro.el('div', 'grow');
+        left.appendChild(vyro.el('b', '', l.name)); left.appendChild(vyro.el('small', '', l.sent ? 'Sent to kitchen' : 'New · ' + vutil.fmt(l.priceCents) + ' each'));
         row.appendChild(left);
-        var q = vyro.el('div', 'qty'), m = vyro.el('button', '', '\u2212'), p = vyro.el('button', '', '+');
-        m.type = p.type = 'button'; m.setAttribute('aria-label', 'Remove one'); p.setAttribute('aria-label', 'Add one');
-        m.addEventListener('click', function () { add(k, -1); }); p.addEventListener('click', function () { add(k, 1); });
-        q.appendChild(m); q.appendChild(vyro.el('b', '', String(c.qty))); q.appendChild(p); row.appendChild(q);
-        row.appendChild(vyro.el('b', '', vutil.fmt(c.priceCents * c.qty)));
-        box.appendChild(row);
+        if (l.sent) row.appendChild(vyro.el('b', '', l.qty + ' x'));
+        else {
+          var q = vyro.el('div', 'qty'), m = vyro.el('button', '', '−'), p = vyro.el('button', '', '+'); m.type = p.type = 'button';
+          m.setAttribute('aria-label', 'Remove one'); p.setAttribute('aria-label', 'Add one');
+          m.addEventListener('click', function () { add(l.menuId, -1); }); p.addEventListener('click', function () { add(l.menuId, 1); });
+          q.appendChild(m); q.appendChild(vyro.el('b', '', String(l.qty))); q.appendChild(p); row.appendChild(q);
+        }
+        row.appendChild(vyro.el('b', '', vutil.fmt(l.priceCents * l.qty))); box.appendChild(row);
       });
       var t = totals(); $('tSub').textContent = vutil.fmt(t.sub); $('tTax').textContent = vutil.fmt(t.tax); $('tTot').textContent = vutil.fmt(t.total);
+      var unsent = cur.lines.some(function (l) { return !l.sent; }); $('send').disabled = !unsent; $('send').textContent = cur.isNew ? 'Send to kitchen' : 'Send new items to kitchen';
     }
+    function showIng(list) {
+      var box = $('ingBox'); box.textContent = ''; box.appendChild(vyro.el('h2', '', 'Ingredients')); var all = {}, allList = [];
+      list.forEach(function (m) {
+        box.appendChild(vyro.el('b', '', m.label || m.name));
+        if (m.ingredients && m.ingredients.length) { var ul = document.createElement('ul'); m.ingredients.forEach(function (i) { ul.appendChild(vyro.el('li', '', i)); var k = i.toLowerCase(); if (!all[k]) { all[k] = 1; allList.push(i); } }); box.appendChild(ul); }
+        else box.appendChild(vyro.el('div', 'note', 'No recipe saved for this item.'));
+      });
+      if (list.length > 1 && allList.length) { box.appendChild(vyro.el('h2', '', 'All together')); box.appendChild(vyro.el('div', '', allList.join(', '))); }
+      box.appendChild(vyro.el('div', 'note', 'This is the list the restaurant saved. It is not an allergen guarantee. Always ask the kitchen about allergies.'));
+      var c = vyro.el('button', 'btn', 'Close'); c.type = 'button'; c.addEventListener('click', function () { $('ingBg').classList.remove('open'); }); box.appendChild(c); $('ingBg').classList.add('open');
+    }
+    $('ingBg').addEventListener('click', function (e) { if (e.target === this) this.classList.remove('open'); });
     $('viewIng').addEventListener('click', function () {
-      var ids = Object.keys(cart); if (!ids.length) { $('msg').textContent = 'Add an item first.'; $('msg').className = 'note err'; return; }
-      showIng(ids.map(function (k) { var m = byId[k]; return { name: cart[k].qty + ' x ' + cart[k].name, ingredients: m ? m.ingredients : [] }; }));
+      if (!cur.lines.length) { $('msg').textContent = 'Add an item first.'; $('msg').className = 'note err'; return; }
+      showIng(cur.lines.map(function (l) { var m = byId[l.menuId]; return { label: l.qty + ' x ' + l.name, ingredients: m ? m.ingredients : [] }; }));
     });
-    $('clear').addEventListener('click', function () { if (orderId) { location.href = 'pos.html'; return; } cart = {}; $('label').value = ''; drawCart(); });
 
-    var loadedSig = '', loadedKitchen = '';
-    function sigNow() { return Object.keys(cart).sort().map(function (k) { return k + ':' + cart[k].qty; }).join(','); }
-    function orderData(status, extra) {
-      var t = totals(), items = Object.keys(cart).map(function (k) { var c = cart[k]; return { menuId: c.id, name: c.name, qty: c.qty, priceCents: c.priceCents }; });
-      var d = { label: $('label').value.trim().slice(0, 40), items: items, subtotalCents: t.sub, taxPct: taxPct, taxCents: t.tax, totalCents: t.total, status: status, updatedAt: vyro.stamp() };
+    // ---------- saving ----------
+    var lastQueued = false;
+    function drawQueue() { var n = vqueue.count(ctx), b = $('qBanner'); b.style.display = n ? 'block' : 'none'; b.textContent = n ? n + ' order' + (n === 1 ? '' : 's') + ' saved on this phone, waiting for the internet. Keep this phone and tap here to upload now.' : ''; }
+    async function flushNow() { try { await vqueue.flush(ctx); } catch (e) {} drawQueue(); }
+    $('qBanner').addEventListener('click', flushNow); window.addEventListener('online', flushNow); flushNow();
+    // status 'Open' = send to kitchen. status 'Paid' = payment (also sends anything new).
+    async function commit(status, extra) {
+      if (!cur.lines.length) { $('msg').textContent = 'Add at least one item.'; $('msg').className = 'note err'; return false; }
+      var unsent = cur.lines.filter(function (l) { return !l.sent; });
+      if (status === 'Open' && !unsent.length) { $('msg').textContent = 'There is nothing new to send.'; $('msg').className = 'note'; return false; }
+      var round = unsent.length ? (cur.lastRound || 0) + 1 : (cur.lastRound || 0), t = totals();
+      var items = cur.lines.map(function (l) { return { menuId: l.menuId, name: l.name, qty: l.qty, priceCents: l.priceCents, round: l.sent ? (l.round || 1) : round }; });
+      var d = { items: items, subtotalCents: t.sub, taxPct: taxPct, taxCents: t.tax, totalCents: t.total, status: status, lastRound: round, updatedAt: vyro.stamp() };
+      if (unsent.length || (status === 'Paid' && cur.kitchen === 'Hold')) d.kitchenStatus = 'New';
       if (extra) for (var k in extra) d[k] = extra[k];
-      return d;
-    }
-    async function save(status, extra) {
-      if (!Object.keys(cart).length) { $('msg').textContent = 'Add at least one item.'; $('msg').className = 'note err'; return false; }
       try {
         var res;
-        if (orderId) {
-          var ud = orderData(status, extra); if (sigNow() !== loadedSig) { ud.kitchenStatus = 'New'; loadedSig = sigNow(); } if (status === 'Paid' && loadedKitchen === 'Hold') { ud.kitchenStatus = 'New'; loadedKitchen = ''; }
-          res = await vqueue.save(ctx, 'update', orderId, ud);
-        } else {
-          var d = orderData(status, extra);
-          orderNo = '#' + String(Date.now() % 10000).padStart(4, '0');
-          d.kitchenStatus = 'New'; d.number = orderNo; d.dateKey = vutil.todayStr(); d.byUid = ctx.user.uid; d.byName = who; d.createdAt = vyro.stamp(); d.clientAt = Date.now();
-          orderId = ctx.bizRef.collection('orders').doc().id;
-          res = await vqueue.save(ctx, 'set', orderId, d);
+        if (cur.id) res = await vqueue.save(ctx, 'update', cur.id, d);
+        else {
+          cur.number = '#' + String(Date.now() % 10000).padStart(4, '0');
+          d.kitchenStatus = 'New'; d.number = cur.number; d.dateKey = vutil.todayStr(); d.byUid = ctx.user.uid; d.byName = who; d.createdAt = vyro.stamp(); d.clientAt = Date.now();
+          if (cur.table) { d.tableId = cur.table.id; d.tableName = cur.table.name; d.label = 'Table ' + cur.table.name; } else d.label = 'Counter';
+          cur.id = ocol.doc().id; res = await vqueue.save(ctx, 'set', cur.id, d);
         }
-        lastQueued = res === 'queued'; drawQueue();
+        lastQueued = res === 'queued'; cur.isNew = false; cur.lastRound = round; if (d.kitchenStatus) cur.kitchen = d.kitchenStatus;
+        cur.lines.forEach(function (l) { if (!l.sent) { l.sent = true; l.round = round; } }); drawCart(); drawQueue();
         return true;
       } catch (e) { $('msg').textContent = vyro.friendly(e); $('msg').className = 'note err'; return false; }
     }
-    var lastQueued = false;
-    function drawQueue() {
-      var n = vqueue.count(ctx), b = $('qBanner');
-      b.style.display = n ? 'block' : 'none';
-      b.textContent = n ? n + ' order' + (n === 1 ? '' : 's') + ' saved on this phone, waiting for the internet. Keep this phone and tap here to upload now.' : '';
-    }
-    async function flushNow() { try { await vqueue.flush(ctx); } catch (e) {} drawQueue(); }
-    $('qBanner').addEventListener('click', flushNow);
-    window.addEventListener('online', flushNow);
-    flushNow();
     $('send').addEventListener('click', async function () {
-      this.disabled = true;
-      if (await save('Open')) { $('msg').textContent = lastQueued ? 'No internet. The order is SAVED ON THIS PHONE and will upload by itself when the connection returns. The kitchen will not see it until then.' : 'Order saved. Find it under Orders.'; $('msg').className = lastQueued ? 'note err' : 'note ok'; cart = {}; orderId = null; $('label').value = ''; drawCart(); }
-      this.disabled = false;
+      this.disabled = true; var tn = cur.table ? 'Table ' + cur.table.name : 'The order';
+      if (await commit('Open')) {
+        var offline = lastQueued; showBoard();
+        $('bMsg').textContent = offline ? 'No internet. ' + tn + ' is SAVED ON THIS PHONE and goes to the kitchen when the connection returns.' : tn + ' sent to the kitchen. You will be alerted when it is ready.'; $('bMsg').className = offline ? 'note err' : 'note ok';
+      } else drawCart();
     });
+
     // ---------- take payment: tip, split, change ----------
     var tipCents = 0, pays = [];
     function payDue() { return totals().total + tipCents; }
@@ -212,24 +285,18 @@
     }
     function calcPay() {
       var due = payDue(), amts = [], sumPrev = 0;
-      pays.forEach(function (p, i) {
-        var raw = p.input ? p.input.value.trim() : '', v;
-        if (i === pays.length - 1 && raw === '') v = Math.max(0, due - sumPrev); else v = raw === '' ? 0 : (vutil.toCents(raw) || 0);
-        amts.push(v); sumPrev += v;
-      });
+      pays.forEach(function (p, i) { var raw = p.input ? p.input.value.trim() : '', v; if (i === pays.length - 1 && raw === '') v = Math.max(0, due - sumPrev); else v = raw === '' ? 0 : (vutil.toCents(raw) || 0); amts.push(v); sumPrev += v; });
       var paid = sumPrev, res = { due: due, paid: paid, ok: false, msg: '', change: 0, payments: [] };
       if (paid < due) { res.msg = vutil.fmt(due - paid) + ' still to collect'; return res; }
-      var over = paid - due, cash = 0;
-      pays.forEach(function (p, i) { if (p.method === 'Cash') cash += amts[i]; });
+      var over = paid - due, cash = 0; pays.forEach(function (p, i) { if (p.method === 'Cash') cash += amts[i]; });
       if (over > cash) { res.msg = 'The amounts add up to more than is due.'; return res; }
       if (over) { for (var i = pays.length - 1; i >= 0 && over > 0; i--) { if (pays[i].method === 'Cash') { var cut = Math.min(over, amts[i]); amts[i] -= cut; over -= cut; res.change += cut; } } }
       pays.forEach(function (p, i) { if (amts[i] > 0) res.payments.push({ method: p.method, amountCents: amts[i] }); });
-      res.ok = res.payments.length > 0; if (res.change) res.msg = 'Change to give back: ' + vutil.fmt(res.change);
-      return res;
+      res.ok = res.payments.length > 0; if (res.change) res.msg = 'Change to give back: ' + vutil.fmt(res.change); return res;
     }
     function drawPay() {
       drawTipTabs(); $('payTot').textContent = vutil.fmt(totals().total); $('payTip').textContent = vutil.fmt(tipCents); $('payDue').textContent = vutil.fmt(payDue());
-      var box = $('payRows'); var keep = pays.map(function (p) { return p.input ? p.input.value : ''; }); box.textContent = '';
+      var box = $('payRows'), keep = pays.map(function (p) { return p.input ? p.input.value : ''; }); box.textContent = '';
       pays.forEach(function (p, i) {
         var row = vyro.el('div', 'item'); row.style.gap = '6px';
         var sel = document.createElement('select'); ['Cash', 'Card', 'Other'].forEach(function (m) { var o = document.createElement('option'); o.textContent = m; sel.appendChild(o); }); sel.value = p.method;
@@ -246,46 +313,27 @@
     $('tipCustom').addEventListener('input', function () { setTip(vutil.toCents(this.value) || 0); });
     $('addPay').addEventListener('click', function () { if (pays.length < 6) { pays.push({ method: 'Card', input: null }); drawPay(); } });
     $('pay').addEventListener('click', function () {
-      if (!Object.keys(cart).length) { $('msg').textContent = 'Add at least one item.'; $('msg').className = 'note err'; return; }
+      if (!cur.lines.length) { $('msg').textContent = 'Add at least one item.'; $('msg').className = 'note err'; return; }
       tipCents = 0; $('tipCustom').value = ''; pays = [{ method: 'Cash', input: null }]; $('payMsg').textContent = ''; drawPay(); $('payBg').classList.add('open');
     });
     $('payNo').addEventListener('click', function () { $('payBg').classList.remove('open'); });
     $('payOk').addEventListener('click', async function () {
-      var r = calcPay(); if (!r.ok) return;
-      this.disabled = true;
-      var ok = await save('Paid', { method: r.payments.length > 1 ? 'Split' : r.payments[0].method, payments: r.payments, tipCents: tipCents, changeCents: r.change, paidAt: vyro.stamp(), paidBy: who });
+      var r = calcPay(); if (!r.ok) return; this.disabled = true;
+      var tableRef = cur.table, label = cur.table ? 'Table ' + cur.table.name : 'The order';
+      var ok = await commit('Paid', { method: r.payments.length > 1 ? 'Split' : r.payments[0].method, payments: r.payments, tipCents: tipCents, changeCents: r.change, paidAt: vyro.stamp(), paidBy: who });
       this.disabled = false;
-      if (ok) {
-        var done = orderId; $('payBg').classList.remove('open');
-        if (lastQueued) { $('msg').textContent = 'No internet. Payment for order ' + (orderNo || '') + ' is SAVED ON THIS PHONE and will upload when the connection returns. The receipt works after it uploads.'; $('msg').className = 'note err'; }
-        else { $('msg').textContent = 'Paid. Order ' + (orderNo || '') + ' recorded. '; $('msg').className = 'note ok'; var a = vyro.el('a', 'link', 'Print receipt'); a.href = 'receipt.html?id=' + done; $('msg').appendChild(a); }
-        cart = {}; orderId = null; $('label').value = ''; drawCart();
-      } else { $('payMsg').textContent = $('msg').textContent; $('payMsg').className = 'note err'; }
+      if (!ok) { $('payMsg').textContent = $('msg').textContent; $('payMsg').className = 'note err'; return; }
+      var done = cur.id, offline = lastQueued; $('payBg').classList.remove('open');
+      if (tableRef && !offline) setTable(tableRef, 'Needs cleaning', { party: '', seatedAt: 0 });
+      showBoard(); var bm = $('bMsg'); bm.textContent = '';
+      if (offline) { bm.textContent = 'No internet. ' + label + ' payment is SAVED ON THIS PHONE and uploads when the connection returns. Mark the table needs-cleaning yourself.'; bm.className = 'note err'; }
+      else { bm.textContent = label + ' paid' + (tableRef ? ' and marked needs cleaning. ' : '. '); bm.className = 'note ok'; var a = vyro.el('a', 'link', 'Print receipt'); a.href = 'receipt.html?id=' + done; bm.appendChild(a); }
     });
 
-    // resume a saved open order: pos.html?order=ID
-    var oid = qs.get('order');
-    if (oid) {
-      try {
-        var os = await ctx.bizRef.collection('orders').doc(oid).get();
-        if (os.exists && os.data().status === 'Open') {
-          var o = os.data(); orderId = oid; orderNo = o.number || ''; loadedKitchen = o.kitchenStatus || ''; $('label').value = o.label || '';
-          (o.items || []).forEach(function (it) { if (!byId[it.menuId]) byId[it.menuId] = { id: it.menuId, name: it.name, priceCents: it.priceCents, ingredients: [] }; cart[it.menuId] = { id: it.menuId, name: it.name, priceCents: it.priceCents, qty: it.qty }; });
-          loadedSig = sigNow(); $('msg').textContent = 'Editing order ' + orderNo + '.'; $('msg').className = 'note';
-        }
-      } catch (e) { $('err').textContent = vyro.friendly(e); }
-    }
-    $('kfind').addEventListener('click', async function () {
-      var n = $('kno').value.trim().toUpperCase(); if (!n) return;
-      try {
-        var s = await ctx.bizRef.collection('orders').where('dateKey', '==', vutil.todayStr()).get(), hit = [];
-        s.forEach(function (d) { var o = d.data(); if (o.number === n && o.status === 'Open') hit.push(d.id); });
-        if (hit.length === 1) location.href = 'pos.html?order=' + hit[0];
-        else $('kmsg').textContent = hit.length ? 'More than one order has that number. Open it from the Orders page.' : 'No unpaid order with that number today.';
-      } catch (e) { $('kmsg').textContent = vyro.friendly(e); }
-    });
-    if (ctx.role === 'server' || ctx.role === 'employee') { try { vnotify.start(ctx); } catch (e) {} }
-    drawMenu(); drawCart();
+    // keep the screen on and ask once to show alerts when this page is in the background
+    try { if (navigator.wakeLock) { var wl = function () { navigator.wakeLock.request('screen').catch(function () {}); }; wl(); document.addEventListener('visibilitychange', function () { if (!document.hidden) wl(); }); } } catch (e) {}
+    if (role === 'server' || role === 'employee') { try { vnotify.start(ctx); } catch (e) {} }
+    drawBoard();
   });
 </script>
 </body>
