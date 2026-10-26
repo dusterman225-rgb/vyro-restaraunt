@@ -33,7 +33,7 @@
         s.forEach(function (d) {
           var o = d.data(); if (o.byUid !== ctx.user.uid || o.status === 'Voided') return;
           var k = o.kitchenStatus || 'New'; now[d.id] = k; if (k === 'Ready') ready++;
-          if (seen && k === 'Ready' && seen[d.id] !== 'Ready') { toast('READY: ' + (o.number || '') + (o.label ? ' · ' + o.label : '')); beep(); }
+          if (seen && k === 'Ready' && seen[d.id] !== 'Ready') { toast('READY: ' + (o.tableName ? 'Table ' + o.tableName : (o.number || '') + (o.label ? ' · ' + o.label : ''))); beep(); }
         });
         seen = now; if (onCount) onCount(ready);
       }, function () { /* notifications are optional */ });
@@ -41,3 +41,4 @@
   }
   window.vnotify = { start: start };
 })();
+                                                                                
