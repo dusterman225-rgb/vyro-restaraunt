@@ -49,6 +49,7 @@
 <script src="js/auth.js"></script>
 <script src="js/theme.js"></script>
 <script src="js/roles.js"></script>
+<script src="js/vcache.js"></script>
 <script>
   var $ = function (id) { return document.getElementById(id); };
   function onlyRestaurant(ctx) { if (ctx.biz.product && ctx.biz.product !== 'restaurant' && !(ctx.biz.apps && ctx.biz.apps.restaurant)) { location.replace('https://vyrocontractor.dusterman225.workers.dev/app.html'); return false; } vtheme.load(ctx); return true; }
@@ -95,7 +96,7 @@
         var canTouch = m.role !== 'owner' && m.id !== ctx.user.uid && (trueOwner || (m.role !== 'gm' && (owner || m.role !== 'supervisor')));
         if (canTouch) { var e = vyro.el('button', 'btn ghost', 'Edit / change title'); e.type = 'button'; e.style.marginTop = '0'; e.addEventListener('click', function () { startEdit(m); }); row.appendChild(e); }
         if (canTouch) { var x = vyro.el('button', 'btn ghost', 'Remove'); x.type = 'button'; x.style.marginTop = '0';
-          x.addEventListener('click', async function () { if (!confirm('Remove ' + vyro.nameOf(m) + '? They will no longer be able to open the restaurant.')) return; try { await col.doc(m.id).delete(); vyro.audit(ctx, 'member removed', m.email); load(); } catch (er) { $('err').textContent = vyro.friendly(er); } });
+          x.addEventListener('click', async function () { if (!confirm('Remove ' + vyro.nameOf(m) + '? They will no longer be able to open the restaurant.')) return; try { await col.doc(m.id).delete(); vcache.bump(ctx, 'members'); vyro.audit(ctx, 'member removed', m.email); load(); } catch (er) { $('err').textContent = vyro.friendly(er); } });
           row.appendChild(x); }
         box.appendChild(row);
       });
@@ -113,9 +114,9 @@
       try {
         if (editing) {
           var upd = { name: n, role: role, title: extra.title }; if (owner) upd.perms = role === 'supervisor' ? extra.perms : {};
-          await col.doc(editing).update(upd); vyro.audit(ctx, 'member changed', em + ' ' + role); $('msg').textContent = 'Saved.'; $('msg').className = 'note ok';
+          await col.doc(editing).update(upd); vcache.bump(ctx, 'members'); vyro.audit(ctx, 'member changed', em + ' ' + role); $('msg').textContent = 'Saved.'; $('msg').className = 'note ok';
         } else {
-          var r = await vyro.addMember(ctx.bizId, em, n, role, extra); vyro.audit(ctx, 'member added', em + ' ' + role);
+          var r = await vyro.addMember(ctx.bizId, em, n, role, extra); vcache.bump(ctx, 'members'); vyro.audit(ctx, 'member added', em + ' ' + role);
           $('msg').textContent = r.invited ? 'That email already has a Vyro login. They were sent an invitation: when they sign in, they will see it on their home screen and can accept it. They keep their other job.' : r.emailSent ? 'Added. They were emailed a link to set their password.' : 'Added, but the email could not be sent. Ask them to use "Forgot password" on the sign-in page.'; $('msg').className = 'note ok';
         }
         reset(); load();
