@@ -1,11 +1,11 @@
-/* Discount or comp with a reason. open({staff, maxPct, current}, done) -> done(null | {pct, flat, reason}) */
+/* Discount or free item with a reason. open({staff, maxPct, current}, done) -> done(null | {pct, flat, reason}) */
 (function () {
   var bg = null, box = null;
   function el(t, c, x) { var n = document.createElement(t); if (c) n.className = c; if (x != null) n.textContent = x; return n; }
   function amount(disc, sub) { if (!disc) return 0; var d = disc.pct ? Math.round(sub * disc.pct / 100) : (disc.flat || 0); return Math.max(0, Math.min(d, sub)); }
   function open(o, done) {
     if (!bg) { bg = el('div', 'modal-bg'); box = el('div', 'modal'); bg.appendChild(box); document.body.appendChild(bg); bg.addEventListener('click', function (e) { if (e.target === bg) bg.classList.remove('open'); }); }
-    box.textContent = ''; box.appendChild(el('h2', '', 'Discount or comp'));
+    box.textContent = ''; box.appendChild(el('h2', '', 'Discount or free item'));
     var cap = o.staff ? 100 : (o.maxPct || 0), cur = o.current || {}, sel = { pct: cur.pct || 0, flat: cur.flat || 0 };
     var presets = [10, 15, 20, 50, 100].filter(function (p) { return p <= cap; }), row = el('div', 'tabs'); row.style.flexWrap = 'wrap';
     var pc = document.createElement('input'), fl = document.createElement('input');
