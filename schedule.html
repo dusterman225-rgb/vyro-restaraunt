@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#05070A">
+<title>Schedule - Vyro Business</title>
+<link rel="icon" href="images/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/styles.css">
+<link rel="stylesheet" href="css/clean.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">
+    <a href="index.html"><img class="mark-small" src="images/logo.svg" alt="Back to home"></a>
+    <div class="tag">Schedule</div>
+  </div>
+  <div class="card" style="margin-top:0">
+    <div class="row" style="gap:8px;border:0"><button class="btn ghost" id="prev" type="button" style="margin:0">&lsaquo; Week</button><b id="wk" style="flex:1;text-align:center"></b><button class="btn ghost" id="next" type="button" style="margin:0">Week &rsaquo;</button></div>
+    <div class="tabs" id="flt"><button type="button" class="on" data-f="all">Everyone</button><button type="button" data-f="mine">My shifts</button></div>
+  </div>
+  <div id="days"></div>
+  <details class="sec" id="addSec" style="display:none"><summary>Add a shift</summary><div class="in">
+    <label class="field"><span>Who</span><select id="who"></select></label>
+    <label class="field"><span>Day</span><input id="date" type="date"></label>
+    <label class="field"><span>Start</span><input id="st" type="time" value="09:00"></label>
+    <label class="field"><span>End</span><input id="en" type="time" value="17:00"></label>
+    <label class="field"><span>Note (optional)</span><input id="note" maxlength="60" placeholder="e.g. opening, patio"></label>
+    <button class="btn" id="add" type="button">Add shift</button><div class="note" id="msg"></div>
+  </div></details>
+  <a class="back" href="index.html">Back to home</a>
+  <div class="note err" id="err"></div>
+</div>
+<script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/util.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/theme.js"></script>
+<script src="js/roles.js"></script>
+<script>
+  var $ = function (id) { return document.getElementById(id); };
+  function onlyRestaurant(ctx) { if (ctx.biz.product && ctx.biz.product !== 'restaurant') { location.replace('https://vyrocontractor.dusterman225.workers.dev/app.html'); return false; } vtheme.load(ctx); return true; }
+  vyro.start(async function (ctx) {
+    if (!onlyRestaurant(ctx)) return;
+    if (ctx.role === 'kiosk') { $('err').textContent = 'Not available on the kiosk login.'; return; }
+    var col = ctx.bizRef.collection('schedule'), edit = vroles.can(ctx, 'timekeeping'), rows = [], members = [], mine = false, unsub = null, start = mondayOf(new Date());
+    function mondayOf(d) { var x = new Date(d); x.setHours(0, 0, 0, 0); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; }
+    function dk(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+    function t12(t) { var p = String(t || '').split(':'), h = parseInt(p[0], 10); return (h % 12 || 12) + (p[1] && p[1] !== '00' ? ':' + p[1] : '') + (h < 12 ? 'a' : 'p'); }
+    if (edit) {
+      $('addSec').style.display = 'block';
+      try { var ms = await ctx.bizRef.collection('members').get(); ms.forEach(function (d) { var m = d.data(); m.id = d.id; if (m.role !== 'kiosk') members.push(m); }); } catch (e) {}
+      members.sort(function (a, b) { return vyro.nameOf(a).localeCompare(vyro.nameOf(b)); });
+      members.forEach(function (m) { var o = document.createElement('option'); o.value = m.id; o.textContent = vyro.nameOf(m); $('who').appendChild(o); });
+    }
+    function load() {
+      if (unsub) unsub(); var end = new Date(start); end.setDate(end.getDate() + 6);
+      $('wk').textContent = start.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' - ' + end.toLocaleDateString([], { month: 'short', day: 'numeric' });
+      unsub = col.where('date', '>=', dk(start)).onSnapshot(function (s) { rows = s.docs.map(function (d) { var x = d.data(); x.id = d.id; return x; }).filter(function (x) { return x.date <= dk(end); }); draw(); }, function (e) { $('err').textContent = vyro.friendly(e); });
+    }
+    function draw() {
+      var box = $('days'); box.textContent = '';
+      for (var i = 0; i < 7; i++) {
+        var d = new Date(start); d.setDate(d.getDate() + i); var k = dk(d), list = rows.filter(function (x) { return x.date === k && (!mine || x.uid === ctx.user.uid); }).sort(function (a, b) { return String(a.start).localeCompare(String(b.start)); });
+        var c = vyro.el('div', 'card'); c.appendChild(vyro.el('h2', '', d.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' })));
+        if (!list.length) c.appendChild(vyro.el('div', 'note', mine ? 'No shift for you.' : 'Nobody scheduled.'));
+        list.forEach(function (x) {
+          var row = vyro.el('div', 'item'), left = vyro.el('div', 'grow'); left.appendChild(vyro.el('b', '', x.name + ' \u00b7 ' + t12(x.start) + '-' + t12(x.end)));
+          left.appendChild(vyro.el('small', '', [x.note, x.swapReq ? 'NEEDS COVER' + (x.swapNote ? ': ' + x.swapNote : '') : ''].filter(Boolean).join(' \u00b7 '))); row.appendChild(left);
+          if (x.uid === ctx.user.uid && !x.swapReq) { var b = vyro.el('button', 'btn ghost', 'Can\'t work this'); b.type = 'button'; b.style.cssText = 'margin:0;width:auto'; b.addEventListener('click', async function () { var n = prompt('Reason or note for your manager (optional)') || ''; try { await col.doc(x.id).update({ swapReq: true, swapNote: n.slice(0, 80), updatedAt: vyro.stamp() }); } catch (e) { $('err').textContent = vyro.friendly(e); } }); row.appendChild(b); }
+          if (edit) {
+            if (x.swapReq) { var r = vyro.el('button', 'btn', 'Give to...'); r.type = 'button'; r.style.cssText = 'margin:0;width:auto'; r.addEventListener('click', function () { var names = members.map(function (m, i2) { return (i2 + 1) + ' ' + vyro.nameOf(m); }).join('\n'); var a = parseInt(prompt('Give this shift to (type the number):\n' + names), 10); var m = members[a - 1]; if (m) col.doc(x.id).update({ uid: m.id, name: vyro.nameOf(m), swapReq: false, swapNote: '', updatedAt: vyro.stamp() }).catch(function (e) { $('err').textContent = vyro.friendly(e); }); }); row.appendChild(r); }
+            var dl = vyro.el('button', 'btn ghost', 'Delete'); dl.type = 'button'; dl.style.cssText = 'margin:0;width:auto'; dl.addEventListener('click', function () { if (confirm('Delete this shift?')) col.doc(x.id).delete().catch(function (e) { $('err').textContent = vyro.friendly(e); }); }); row.appendChild(dl);
+          }
+          c.appendChild(row);
+        });
+        box.appendChild(c);
+      }
+    }
+    $('prev').addEventListener('click', function () { start.setDate(start.getDate() - 7); load(); }); $('next').addEventListener('click', function () { start.setDate(start.getDate() + 7); load(); });
+    Array.prototype.forEach.call(document.querySelectorAll('#flt button'), function (b) { b.addEventListener('click', function () { mine = b.getAttribute('data-f') === 'mine'; Array.prototype.forEach.call(document.querySelectorAll('#flt button'), function (x) { x.classList.toggle('on', x === b); }); draw(); }); });
+    $('date').value = dk(new Date());
+    $('add').addEventListener('click', async function () {
+      var m = members.filter(function (x) { return x.id === $('who').value; })[0]; if (!m || !$('date').value) { $('msg').textContent = 'Pick a person and a day.'; $('msg').className = 'note err'; return; }
+      if ($('en').value <= $('st').value) { $('msg').textContent = 'End time must be after the start (for overnight, make two shifts).'; $('msg').className = 'note err'; return; }
+      try { await col.add({ uid: m.id, name: vyro.nameOf(m), date: $('date').value, start: $('st').value, end: $('en').value, note: $('note').value.trim().slice(0, 60), swapReq: false, createdAt: vyro.stamp(), updatedAt: vyro.stamp() }); $('msg').textContent = 'Added.'; $('msg').className = 'note ok'; $('note').value = ''; } catch (e) { $('msg').textContent = vyro.friendly(e); $('msg').className = 'note err'; }
+    });
+    load();
+  });
+</script>
+</body>
+</html>
